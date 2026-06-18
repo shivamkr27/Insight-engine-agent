@@ -1,0 +1,35 @@
+# LangChain ecosystem
+langchain>=0.3.0
+langchain-groq>=0.2.0
+langchain-community>=0.3.0
+langchain-huggingface>=0.1.0
+langchain-chroma>=0.2.0
+langchain-text-splitters>=0.3.0
+langgraph>=0.3.0
+
+# Vector DB
+chromadb>=0.6.0
+
+# Embeddings + cross-encoder reranker
+# torch is installed separately in Dockerfile (CPU-only build, ~700MB vs 2GB)
+sentence-transformers>=3.0.0
+
+# Sparse search (BM25)
+rank-bm25>=0.2.2
+
+# UI
+chainlit>=2.0.0
+
+# PDF → Markdown
+pymupdf>=1.24.0
+pymupdf4llm>=0.0.17
+
+# Structured data / SQL
+pandas>=2.0.0
+sqlalchemy>=2.0.0
+
+# Token counting
+tiktoken>=0.7.0
+
+# Environment
+python-dotenv>=1.0.0

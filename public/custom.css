@@ -1,0 +1,218 @@
+/* ═══════════════════════════════════════════════════════════════════
+   India Policy Intelligence Agent — Constitution / Parchment Theme
+
+   Palette:
+     Parchment   #FAF3E0  — main background (like aged paper)
+     Cream card  #FFF8ED  — message / card backgrounds
+     Dark Brown  #3B2314  — sidebar (like leather-bound books)
+     Gold        #C49A1B  — accent, buttons, headings
+     Deep Text   #1A0F00  — body text
+     Saffron     #E07B00  — user message accent
+     India Green #1A6B2A  — verified / success states
+═══════════════════════════════════════════════════════════════════ */
+
+/* ── Google Fonts ──────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Lato:wght@400;600&display=swap');
+
+/* ── Root & Body ───────────────────────────────────────────────────── */
+:root {
+  --parchment:    #FAF3E0;
+  --cream:        #FFF8ED;
+  --brown-dark:   #3B2314;
+  --brown-mid:    #6B3A1F;
+  --gold:         #C49A1B;
+  --gold-light:   #E8C84A;
+  --text-dark:    #1A0F00;
+  --saffron:      #E07B00;
+  --india-green:  #1A6B2A;
+  --border:       rgba(196, 154, 27, 0.35);
+}
+
+body, #root, html {
+  background-color: var(--parchment) !important;
+  color: var(--text-dark) !important;
+  font-family: 'Lato', 'Segoe UI', sans-serif !important;
+}
+
+/* ── App Header / Title bar ────────────────────────────────────────── */
+header, [class*="header"], [data-testid="header"] {
+  background: linear-gradient(135deg, var(--brown-dark) 0%, var(--brown-mid) 100%) !important;
+  border-bottom: 3px solid var(--gold) !important;
+}
+
+header h1, header span, [class*="header"] h1 {
+  font-family: 'EB Garamond', Georgia, serif !important;
+  color: var(--gold) !important;
+  letter-spacing: 0.03em;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────── */
+aside,
+[class*="sidebar"],
+[data-testid="sidebar"],
+.MuiDrawer-paper {
+  background: linear-gradient(180deg, var(--brown-dark) 0%, #2A1A0E 100%) !important;
+  border-right: 2px solid var(--gold) !important;
+  color: var(--parchment) !important;
+}
+
+/* Sidebar text */
+aside *, [class*="sidebar"] * {
+  color: var(--parchment) !important;
+}
+
+/* Sidebar buttons */
+aside button, [class*="sidebar"] button {
+  background: rgba(196, 154, 27, 0.2) !important;
+  border: 1px solid var(--gold) !important;
+  color: var(--gold) !important;
+  border-radius: 6px !important;
+}
+aside button:hover, [class*="sidebar"] button:hover {
+  background: rgba(196, 154, 27, 0.4) !important;
+}
+
+/* ── Main chat area ─────────────────────────────────────────────────── */
+main, [class*="main"], [data-testid="main"] {
+  background-color: var(--parchment) !important;
+}
+
+/* ── Message containers ─────────────────────────────────────────────── */
+[class*="message"],
+.message,
+[data-testid="message"] {
+  background-color: var(--cream) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  font-family: 'EB Garamond', Georgia, serif !important;
+  font-size: 1.05rem !important;
+  line-height: 1.7 !important;
+  color: var(--text-dark) !important;
+  box-shadow: 0 2px 8px rgba(59, 35, 20, 0.08) !important;
+}
+
+/* User messages — subtle saffron left border */
+[class*="human"] [class*="message"],
+[data-testid="human-message"],
+.user-message {
+  border-left: 4px solid var(--saffron) !important;
+  background-color: #FFF4E5 !important;
+}
+
+/* AI / assistant messages — gold left border */
+[class*="assistant"] [class*="message"],
+[data-testid="assistant-message"],
+.assistant-message {
+  border-left: 4px solid var(--gold) !important;
+}
+
+/* ── Headings inside messages ───────────────────────────────────────── */
+[class*="message"] h1,
+[class*="message"] h2,
+[class*="message"] h3 {
+  font-family: 'EB Garamond', Georgia, serif !important;
+  color: var(--brown-dark) !important;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+/* ── Code blocks ─────────────────────────────────────────────────────── */
+[class*="message"] pre,
+[class*="message"] code {
+  background: #EDE4CC !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  font-family: 'Courier New', monospace !important;
+  color: var(--brown-dark) !important;
+}
+
+/* ── Steps (agent thinking / tool calls) ─────────────────────────────── */
+[class*="step"],
+.step,
+[data-testid="step"] {
+  background: #F0E8D0 !important;
+  border-left: 3px solid var(--gold) !important;
+  border-radius: 6px !important;
+  font-size: 0.9rem !important;
+  font-family: 'Lato', sans-serif !important;
+}
+
+/* ── Action buttons (Upload / Ingest) ────────────────────────────────── */
+[class*="action-button"],
+button[class*="action"],
+.chainlit-action-button {
+  background: var(--brown-dark) !important;
+  color: var(--gold) !important;
+  border: 1px solid var(--gold) !important;
+  border-radius: 8px !important;
+  font-family: 'Lato', sans-serif !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+[class*="action-button"]:hover {
+  background: var(--gold) !important;
+  color: var(--brown-dark) !important;
+}
+
+/* ── Chat input area ─────────────────────────────────────────────────── */
+[class*="input"],
+textarea,
+[data-testid="chat-input"] {
+  background: var(--cream) !important;
+  border: 2px solid var(--border) !important;
+  border-radius: 10px !important;
+  color: var(--text-dark) !important;
+  font-family: 'Lato', sans-serif !important;
+}
+[class*="input"]:focus, textarea:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(196, 154, 27, 0.2) !important;
+}
+
+/* Send button */
+[class*="send"], button[type="submit"] {
+  background: var(--gold) !important;
+  color: var(--brown-dark) !important;
+  border-radius: 8px !important;
+}
+[class*="send"]:hover {
+  background: var(--gold-light) !important;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 7px; }
+::-webkit-scrollbar-track { background: var(--parchment); }
+::-webkit-scrollbar-thumb {
+  background: rgba(196, 154, 27, 0.5);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
+/* ── Horizontal rule — Tricolor divider ──────────────────────────────── */
+[class*="message"] hr {
+  border: none !important;
+  height: 3px !important;
+  background: linear-gradient(
+    to right,
+    var(--saffron)  33%,
+    #ffffff         33%,
+    #ffffff         66%,
+    var(--india-green) 66%
+  ) !important;
+  margin: 12px 0 !important;
+}
+
+/* ── Author name (System, 📚 Documents, etc.) ─────────────────────────── */
+[class*="author"], .author {
+  font-family: 'Lato', sans-serif !important;
+  font-size: 0.78rem !important;
+  color: var(--brown-mid) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+}
+
+/* ── Badge elements (Verified / Review / Warning) ────────────────────── */
+.badge-verified { color: var(--india-green) !important; font-weight: 700; }
+.badge-review   { color: var(--saffron) !important;    font-weight: 700; }
+.badge-warning  { color: #B22222 !important;           font-weight: 700; }

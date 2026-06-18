@@ -1,0 +1,14 @@
+services:
+  india-policy-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount local folders so data persists outside the container
+      - ./docs:/app/docs
+      - ./data:/app/data
+      - ./chroma_db:/app/chroma_db
+      - ./parent_store:/app/parent_store
+    env_file:
+      - .env
+    restart: unless-stopped

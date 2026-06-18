@@ -1,0 +1,24 @@
+[project]
+enable_telemetry = false
+session_timeout  = 3600
+
+[features]
+unsafe_allow_html = true
+multi_modal       = true
+
+[UI]
+name        = "India Policy Intelligence Agent"
+description = "Multi-agent RAG for Indian government policies, RBI circulars & Union Budget"
+default_theme = "light"
+layout        = "wide"
+hide_cta      = true
+
+[UI.theme]
+default = "light"
+
+[UI.theme.light]
+background = "#FAF3E0"
+paper      = "#FFF8ED"
+
+[meta]
+generated_by = "chainlit"
