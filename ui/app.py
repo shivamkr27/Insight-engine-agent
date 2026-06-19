@@ -62,7 +62,7 @@ from core.ingestion import Ingestion
 from core.tools import ToolFactory, user_id_ctx
 from core.text2sql import Text2SQLEngine
 from core.judge import HallucinationJudge
-from core.graph import build_graph, create_checkpointer  # create_checkpointer is now async
+from core.graph import build_graph
 from core.study_graph import build_study_graph
 from core.memory_store import UserMemoryStore
 from core.rate_limiter import RateLimiter
@@ -116,18 +116,11 @@ _limiter      = RateLimiter(max_requests=RATE_LIMIT_REQUESTS, window_seconds=RAT
 _history      = ConversationStore(db_path=HISTORY_DB_PATH)
 _study_store  = StudyStore(db_path=STUDY_DB_PATH)
 
-logger.info("Singletons ready. Waiting for app start to init async graph...")
-
-
-# ── App startup — async graph + checkpointer init ──────────────────────────────
-
-@cl.on_chat_app_start
-async def on_app_start():
-    global _checkpointer, _graph, _study_graph
-    _checkpointer = await create_checkpointer()
-    _graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
-    _study_graph  = build_study_graph(_llm, _factory, _checkpointer)
-    logger.info("Agent ready.")
+from langgraph.checkpoint.memory import InMemorySaver
+_checkpointer = InMemorySaver()
+_graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
+_study_graph  = build_study_graph(_llm, _factory, _checkpointer)
+logger.info("Agent ready.")
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
