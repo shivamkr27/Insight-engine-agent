@@ -1,130 +1,273 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
-:root,
-html[data-theme="dark"],
-html[data-theme="light"] {
-  --bg-primary:    #0B1120;
-  --bg-secondary:  #0F1A2E;
-  --bg-card:       #152035;
-  --bg-hover:      #1C2D47;
-  --accent:        #4F8EF7;
-  --accent-dim:    rgba(79,142,247,0.15);
-  --accent-border: rgba(79,142,247,0.35);
-  --text-primary:  #E8EDF5;
-  --text-muted:    #7A90B0;
-  --text-dim:      #4A6080;
-  --border:        rgba(79,142,247,0.12);
-  --border-mid:    rgba(79,142,247,0.22);
-  --green:         #3DD68C;
-  --yellow:        #F5C542;
-  --red:           #E05252;
-  --font: 'Inter', system-ui, sans-serif;
-  font-family: var(--font) !important;
+:root {
+  --bg-base:        #0D0F1A;
+  --bg-sidebar:     #0A1020;
+  --bg-card:        #111827;
+  --bg-input:       #0F1628;
+  --bg-hover:       #1A2540;
+  --bg-active:      #1E2D4A;
+  --accent:         #F0BA72;
+  --accent-dim:     rgba(240,186,114,0.12);
+  --accent-border:  rgba(240,186,114,0.28);
+  --accent-glow:    rgba(240,186,114,0.06);
+  --blue-mid:       #1E3A5F;
+  --text-primary:   #E2E8F0;
+  --text-secondary: #8B949E;
+  --text-dim:       #4A5568;
+  --border:         rgba(255,255,255,0.06);
+  --border-mid:     rgba(255,255,255,0.1);
+  --green:          #3FB950;
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-body, html, #root {
-  background: var(--bg-primary) !important;
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  background: var(--bg-base) !important;
   color: var(--text-primary) !important;
   font-family: var(--font) !important;
+  min-height: 100vh;
 }
 
-/* ── Header / navbar ─────────────────────────────────────────────── */
-header, [data-testid="header"], .MuiAppBar-root {
-  background: var(--bg-secondary) !important;
+/* ── SIDEBAR ── */
+aside,
+.MuiDrawer-root,
+.MuiDrawer-paper,
+[class*="sidebar"],
+[data-testid="sidebar"] {
+  background: var(--bg-sidebar) !important;
+  border-right: 1px solid var(--border-mid) !important;
+  backdrop-filter: none !important;
+}
+
+/* Sidebar header label */
+aside h2,
+aside [class*="ThreadList"] h2,
+aside [class*="header"] {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: var(--text-dim) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+}
+
+/* Sidebar thread items */
+aside button,
+aside a,
+aside li,
+[class*="ThreadItem"],
+[class*="thread-item"] {
+  color: var(--text-secondary) !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  transition: background 0.15s !important;
+}
+aside button:hover,
+aside a:hover,
+[class*="ThreadItem"]:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+aside [class*="active"],
+aside [aria-selected="true"] {
+  background: var(--bg-active) !important;
+  color: var(--accent) !important;
+  border-left: 2px solid var(--accent) !important;
+}
+
+/* New chat button in sidebar */
+aside button[class*="new"],
+[data-testid="new-chat-button"],
+aside button:first-of-type {
+  background: var(--accent) !important;
+  color: #0D0F1A !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  border: none !important;
+  margin-bottom: 8px !important;
+}
+
+/* Sidebar icons */
+aside svg,
+aside [class*="icon"] {
+  color: var(--text-dim) !important;
+}
+
+/* ── HEADER / TOPBAR ── */
+header,
+[data-testid="header"],
+.MuiAppBar-root,
+[class*="Header"],
+[class*="topbar"] {
+  background: var(--bg-sidebar) !important;
   border-bottom: 1px solid var(--border-mid) !important;
   box-shadow: none !important;
 }
-header h1, header span, [data-testid="header"] * {
+
+/* App name in header */
+header h1,
+header [class*="name"],
+[data-testid="header"] h1,
+[data-testid="header"] span {
   color: var(--accent) !important;
   font-weight: 600 !important;
   font-size: 15px !important;
+  font-family: var(--font) !important;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────────── */
-aside, .MuiDrawer-paper, [data-testid="sidebar"] {
-  background: var(--bg-secondary) !important;
-  border-right: 1px solid var(--border-mid) !important;
+/* Header icons */
+header button,
+header svg,
+[data-testid="header"] button {
+  color: var(--text-secondary) !important;
 }
-aside button, aside a {
-  color: var(--text-muted) !important;
+header button:hover,
+[data-testid="header"] button:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
   border-radius: 6px !important;
 }
-aside button:hover, aside a:hover {
-  background: var(--accent-dim) !important;
-  color: var(--text-primary) !important;
+
+/* ── MAIN CHAT AREA ── */
+main,
+[class*="main"],
+[data-testid="main"],
+[class*="chat-container"] {
+  background: var(--bg-base) !important;
 }
 
-/* ── New chat button ─────────────────────────────────────────────── */
-[data-testid="new-chat-button"] {
-  background: var(--accent) !important;
-  color: #fff !important;
-  border-radius: 8px !important;
-  font-weight: 500 !important;
-}
+/* ── MESSAGES ── */
 
-/* ── Messages ────────────────────────────────────────────────────── */
-[data-testid="assistant-message"],
-[data-author-role="assistant"] > div {
-  background: var(--bg-card) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 2px 12px 12px 12px !important;
-}
+/* User message bubble */
 [data-testid="user-message"],
-[data-author-role="user"] > div {
-  background: var(--accent-dim) !important;
+[data-author-role="user"] > div,
+[class*="UserMessage"],
+[class*="user-message"] {
+  background: var(--bg-active) !important;
   border: 1px solid var(--accent-border) !important;
-  border-radius: 12px 2px 12px 12px !important;
+  border-radius: 10px 2px 10px 10px !important;
+  color: var(--text-primary) !important;
+  padding: 10px 14px !important;
 }
 
-/* ── Step chips — thinking / sources ─────────────────────────────── */
-[data-testid="step"], .step {
+/* Assistant message bubble */
+[data-testid="assistant-message"],
+[data-author-role="assistant"] > div,
+[class*="AssistantMessage"],
+[class*="assistant-message"] {
   background: var(--bg-card) !important;
+  border: 1px solid var(--border-mid) !important;
+  border-radius: 2px 10px 10px 10px !important;
+  color: var(--text-primary) !important;
+  padding: 10px 14px !important;
+}
+
+/* Message text */
+[class*="message"] p,
+[class*="message"] li,
+[class*="message"] span {
+  color: var(--text-primary) !important;
+  font-size: 14px !important;
+  line-height: 1.7 !important;
+}
+
+/* Author label */
+[class*="author"],
+[data-testid="author"],
+[class*="Author"] {
+  color: var(--accent) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+}
+
+/* ── STEP CHIPS (thinking steps) ── */
+[data-testid="step"],
+.step,
+[class*="Step"],
+[class*="step-"] {
+  background: var(--bg-input) !important;
   border: 1px solid var(--border) !important;
   border-left: 3px solid var(--accent) !important;
   border-radius: 0 6px 6px 0 !important;
-  color: var(--text-muted) !important;
+  color: var(--text-dim) !important;
   font-size: 12px !important;
-  padding: 4px 10px !important;
+  padding: 5px 12px !important;
+  margin: 3px 0 !important;
 }
 
-/* ── Input area ──────────────────────────────────────────────────── */
+/* ── INPUT AREA ── */
 [data-testid="chat-input"],
-#chat-input {
-  background: var(--bg-secondary) !important;
-  border: 1px solid var(--border-mid) !important;
+#chat-input,
+[class*="inputBox"],
+[class*="InputBox"],
+[class*="MessageInput"],
+[class*="input-container"] {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--accent-border) !important;
   border-radius: 12px !important;
+  box-shadow: 0 0 20px rgba(240,186,114,0.04) !important;
 }
 [data-testid="chat-input"]:focus-within,
 #chat-input:focus-within {
   border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px rgba(79,142,247,0.12) !important;
+  box-shadow: 0 0 0 3px rgba(240,186,114,0.1) !important;
 }
-textarea {
+
+textarea,
+[class*="textarea"],
+[class*="TextArea"] {
   background: transparent !important;
   color: var(--text-primary) !important;
   font-family: var(--font) !important;
   font-size: 14px !important;
+  caret-color: var(--accent) !important;
 }
-textarea::placeholder { color: var(--text-dim) !important; }
+textarea::placeholder {
+  color: var(--text-dim) !important;
+  font-size: 14px !important;
+}
 
-/* ── Send button ─────────────────────────────────────────────────── */
-[data-testid="send-button"] {
+/* Send button */
+button[data-testid="send-button"],
+[class*="SendButton"],
+[class*="send-button"] {
   background: var(--accent) !important;
-  color: #fff !important;
+  color: #0D0F1A !important;
   border-radius: 8px !important;
   border: none !important;
 }
+button[data-testid="send-button"]:hover {
+  background: #f5c842 !important;
+}
 
-/* ── Action buttons ──────────────────────────────────────────────── */
+/* Attachment/mic icons in input */
+[data-testid="chat-input"] button,
+[class*="inputBox"] button {
+  color: var(--text-dim) !important;
+  border-radius: 6px !important;
+}
+[data-testid="chat-input"] button:hover {
+  background: var(--bg-hover) !important;
+  color: var(--accent) !important;
+}
+
+/* ── ACTION BUTTONS ── */
 [data-testid="action-button"],
-.actions-list button {
+.actions-list button,
+[class*="ActionButton"],
+[class*="action-button"] {
   background: var(--bg-card) !important;
   color: var(--accent) !important;
   border: 1px solid var(--accent-border) !important;
   border-radius: 8px !important;
-  font-weight: 500 !important;
   font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 6px 14px !important;
   transition: all 0.15s !important;
+  font-family: var(--font) !important;
 }
 [data-testid="action-button"]:hover,
 .actions-list button:hover {
@@ -132,125 +275,117 @@ textarea::placeholder { color: var(--text-dim) !important; }
   border-color: var(--accent) !important;
 }
 
-/* ── Author / avatar labels ──────────────────────────────────────── */
-[class*="author"], [data-testid="author"] {
-  color: var(--accent) !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.05em !important;
-  text-transform: uppercase !important;
-}
-[class*="avatar"], [class*="Avatar"] {
-  background: var(--accent-dim) !important;
-  color: var(--accent) !important;
-  border: 1px solid var(--accent-border) !important;
-}
-
-/* ── Code blocks ─────────────────────────────────────────────────── */
+/* ── CODE BLOCKS ── */
 code {
-  background: rgba(79,142,247,0.08) !important;
+  background: rgba(240,186,114,0.08) !important;
   border: 1px solid var(--border) !important;
   border-radius: 4px !important;
-  color: #93C5FD !important;
-  padding: 1px 5px !important;
+  color: #FCD34D !important;
+  padding: 2px 6px !important;
   font-size: 13px !important;
 }
 pre {
   background: var(--bg-card) !important;
   border: 1px solid var(--border-mid) !important;
-  border-radius: 8px !important;
-  padding: 14px !important;
-  color: #93C5FD !important;
+  border-radius: 10px !important;
+  padding: 16px !important;
+  overflow-x: auto !important;
 }
-pre code { background: transparent !important; border: none !important; padding: 0 !important; }
+pre code {
+  background: transparent !important;
+  border: none !important;
+  color: #E2E8F0 !important;
+  padding: 0 !important;
+}
 
-/* ── Tables ──────────────────────────────────────────────────────── */
-table { border-collapse: collapse; width: 100%; }
+/* ── TABLES ── */
+table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  font-size: 13px !important;
+}
 table th {
-  background: var(--bg-card) !important;
+  background: var(--bg-active) !important;
   color: var(--accent) !important;
-  padding: 8px 12px !important;
-  font-size: 0.82rem;
-  font-weight: 600;
+  padding: 9px 14px !important;
+  font-weight: 500 !important;
+  border: 1px solid var(--border-mid) !important;
+  text-align: left !important;
 }
 table td {
-  background: var(--bg-secondary) !important;
+  background: var(--bg-card) !important;
   color: var(--text-primary) !important;
-  padding: 7px 12px !important;
-  border-bottom: 1px solid var(--border) !important;
-  font-size: 0.85rem;
+  padding: 8px 14px !important;
+  border: 1px solid var(--border) !important;
+}
+table tr:hover td {
+  background: var(--bg-hover) !important;
 }
 
-/* ── Typography ──────────────────────────────────────────────────── */
-a { color: var(--accent) !important; text-decoration: none; }
-a:hover { text-decoration: underline; opacity: 0.85; }
+/* ── MISC ── */
+a { color: var(--accent) !important; text-decoration: none !important; }
+a:hover { text-decoration: underline !important; }
+
 blockquote {
   border-left: 3px solid var(--accent-border) !important;
   background: var(--bg-card) !important;
-  color: var(--text-muted) !important;
-  padding: 8px 14px !important;
+  color: var(--text-secondary) !important;
+  padding: 10px 16px !important;
   border-radius: 0 6px 6px 0 !important;
   margin: 8px 0 !important;
 }
+
+strong { color: var(--text-primary) !important; }
+
 hr {
   border: none !important;
-  height: 1px !important;
-  background: var(--border) !important;
+  border-top: 1px solid var(--border) !important;
   margin: 12px 0 !important;
 }
-h1, h2     { color: var(--text-primary) !important; }
-h3         { color: var(--accent) !important; }
-h4, h5, h6 { color: var(--text-muted) !important; }
 
-/* ── MUI overrides ───────────────────────────────────────────────── */
-.MuiPaper-root         { background: var(--bg-secondary) !important; }
-.MuiDivider-root       { border-color: var(--border) !important; }
-.MuiIconButton-root    { color: var(--text-muted) !important; }
-.MuiIconButton-root:hover { background: var(--accent-dim) !important; }
-.MuiListItemButton-root:hover { background: var(--accent-dim) !important; }
-.MuiChip-root {
-  background: var(--bg-card) !important;
-  border: 1px solid var(--border-mid) !important;
-  color: var(--text-muted) !important;
-}
-.MuiTooltip-tooltip {
-  background: var(--bg-card) !important;
-  border: 1px solid var(--border-mid) !important;
-  color: var(--text-primary) !important;
-}
-.MuiDialog-paper {
-  background: var(--bg-secondary) !important;
-  border: 1px solid var(--border-mid) !important;
-  border-radius: 12px !important;
-}
+/* ── MUI OVERRIDES ── */
+.MuiPaper-root { background: var(--bg-card) !important; }
+.MuiDivider-root { border-color: var(--border) !important; }
+.MuiIconButton-root { color: var(--text-secondary) !important; border-radius: 6px !important; }
+.MuiIconButton-root:hover { background: var(--bg-hover) !important; color: var(--text-primary) !important; }
+.MuiTooltip-tooltip { background: var(--bg-card) !important; color: var(--text-primary) !important; border: 1px solid var(--border-mid) !important; font-size: 12px !important; border-radius: 6px !important; }
+.MuiChip-root { background: var(--bg-card) !important; color: var(--text-secondary) !important; border: 1px solid var(--border-mid) !important; }
+.MuiLinearProgress-root { background: var(--bg-hover) !important; }
+.MuiLinearProgress-bar { background: var(--accent) !important; }
+.MuiListItemButton-root:hover { background: var(--bg-hover) !important; }
+.MuiDialog-paper { background: var(--bg-card) !important; border: 1px solid var(--border-mid) !important; border-radius: 12px !important; }
 .MuiSwitch-thumb { background: var(--accent) !important; }
-.Mui-checked + .MuiSwitch-track { background: rgba(79,142,247,0.4) !important; }
+.Mui-checked + .MuiSwitch-track { background: rgba(240,186,114,0.4) !important; }
 .MuiCircularProgress-root { color: var(--accent) !important; }
 
-/* ── Scrollbar ───────────────────────────────────────────────────── */
+/* ── AVATAR ── */
+[class*="avatar"],
+[class*="Avatar"] {
+  background: var(--accent-dim) !important;
+  color: var(--accent) !important;
+  border: 1px solid var(--accent-border) !important;
+  font-weight: 600 !important;
+}
+
+/* ── SCROLLBAR ── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--accent-border);
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+::-webkit-scrollbar-thumb { background: rgba(240,186,114,0.2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(240,186,114,0.4); }
 
-/* ── Mobile ──────────────────────────────────────────────────────── */
+/* ── MOBILE ── */
 @media (max-width: 768px) {
   textarea { font-size: 16px !important; }
   [data-testid="assistant-message"],
-  [data-testid="user-message"],
-  [data-author-role="user"] > div,
-  [data-author-role="assistant"] > div {
+  [data-testid="user-message"] {
     max-width: calc(100vw - 24px) !important;
-  }
-  [data-testid="step"], .step {
-    font-size: 11px !important;
-    padding: 3px 8px !important;
   }
   aside, .MuiDrawer-paper {
     width: 100vw !important;
     max-width: 280px !important;
+  }
+  [data-testid="step"], .step {
+    font-size: 11px !important;
+    padding: 3px 8px !important;
   }
 }

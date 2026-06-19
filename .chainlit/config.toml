@@ -8,7 +8,7 @@ multi_modal       = true
 
 [UI]
 name          = "InsightEngine AI"
-description   = "Intelligent document research assistant"
+description   = "Intelligent document assistant"
 default_theme = "dark"
 layout        = "wide"
 hide_cta      = true
@@ -18,14 +18,14 @@ custom_css    = "/public/custom.css"
 default = "dark"
 
 [UI.theme.dark]
-background = "#0B1120"
-paper      = "#0F1A2E"
-primary    = "#4F8EF7"
+background = "#0D0F1A"
+paper      = "#111827"
+primary    = "#F0BA72"
 
 [UI.theme.light]
-background = "#0B1120"
-paper      = "#0F1A2E"
-primary    = "#4F8EF7"
+background = "#0D0F1A"
+paper      = "#111827"
+primary    = "#F0BA72"
 
 [meta]
 generated_by = "chainlit"
