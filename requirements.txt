@@ -26,7 +26,7 @@ pymupdf>=1.24.0
 pymupdf4llm>=0.0.17
 
 # Structured data / SQL
-pandas>=2.0.0
+pandas>=3.0.3
 sqlalchemy>=2.0.0
 
 # Token counting
