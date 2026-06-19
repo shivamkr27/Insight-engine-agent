@@ -118,9 +118,11 @@ _history      = ConversationStore(db_path=HISTORY_DB_PATH)
 _study_store  = StudyStore(db_path=STUDY_DB_PATH)
 
 try:
+    import sqlite3 as _sqlite3_cp
     from langgraph.checkpoint.sqlite import SqliteSaver
     from core.config import SQLITE_CHECKPOINT_PATH
-    _checkpointer = SqliteSaver.from_conn_string(str(SQLITE_CHECKPOINT_PATH))
+    _cp_conn = _sqlite3_cp.connect(str(SQLITE_CHECKPOINT_PATH), check_same_thread=False)
+    _checkpointer = SqliteSaver(_cp_conn)
     logger.info(f"Using SqliteSaver for persistence: {SQLITE_CHECKPOINT_PATH}")
 except Exception as _cp_err:
     logger.warning(f"SqliteSaver unavailable ({_cp_err}), falling back to InMemorySaver")
