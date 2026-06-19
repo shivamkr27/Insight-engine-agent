@@ -117,17 +117,8 @@ _limiter      = RateLimiter(max_requests=RATE_LIMIT_REQUESTS, window_seconds=RAT
 _history      = ConversationStore(db_path=HISTORY_DB_PATH)
 _study_store  = StudyStore(db_path=STUDY_DB_PATH)
 
-try:
-    import sqlite3 as _sqlite3_cp
-    from langgraph.checkpoint.sqlite import SqliteSaver
-    from core.config import SQLITE_CHECKPOINT_PATH
-    _cp_conn = _sqlite3_cp.connect(str(SQLITE_CHECKPOINT_PATH), check_same_thread=False)
-    _checkpointer = SqliteSaver(_cp_conn)
-    logger.info(f"Using SqliteSaver for persistence: {SQLITE_CHECKPOINT_PATH}")
-except Exception as _cp_err:
-    logger.warning(f"SqliteSaver unavailable ({_cp_err}), falling back to InMemorySaver")
-    from langgraph.checkpoint.memory import InMemorySaver
-    _checkpointer = InMemorySaver()
+from langgraph.checkpoint.memory import InMemorySaver
+_checkpointer = InMemorySaver()
 _graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
 _study_graph  = build_study_graph(_llm, _factory, _checkpointer)
 logger.info("Agent ready.")
