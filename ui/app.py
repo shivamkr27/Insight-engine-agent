@@ -119,17 +119,16 @@ _study_store  = StudyStore(db_path=STUDY_DB_PATH)
 logger.info("Agent ready. Launching UI...")
 
 
-# ── Auth (activated only when CHAINLIT_AUTH_SECRET is set) ────────────────────
+# ── Auth — Google OAuth ────────────────────────────────────────────────────────
 
-@cl.password_auth_callback
-def auth_callback(username: str, password: str) -> Optional[cl.User]:
-    admin_user = os.environ.get("ADMIN_USERNAME", "admin")
-    admin_pass = os.environ.get("ADMIN_PASSWORD", "")
-    if not admin_pass:
-        return cl.User(identifier=username, metadata={"role": "user"})
-    if username == admin_user and password == admin_pass:
-        return cl.User(identifier=username, metadata={"role": "admin"})
-    return None
+@cl.oauth_callback
+def oauth_callback(
+    provider_id: str,
+    token: str,
+    raw_user_data: dict,
+    default_user: cl.User,
+) -> Optional[cl.User]:
+    return default_user
 
 
 # ── Chat lifecycle ─────────────────────────────────────────────────────────────
