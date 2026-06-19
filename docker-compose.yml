@@ -1,14 +1,27 @@
 services:
+
   india-policy-agent:
     build: .
     ports:
       - "8000:8000"
     volumes:
-      # Mount local folders so data persists outside the container
       - ./docs:/app/docs
       - ./data:/app/data
-      - ./chroma_db:/app/chroma_db
-      - ./parent_store:/app/parent_store
+      - chroma_data:/app/chroma_db
     env_file:
       - .env
+    environment:
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
+    mem_limit: 800m
+    memswap_limit: 2500m
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  chroma_data:
