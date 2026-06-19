@@ -36,5 +36,8 @@ tiktoken>=0.7.0
 # Retry with exponential backoff
 tenacity>=8.2.0
 
+# Web search
+duckduckgo-search>=6.0.0
+
 # Environment
 python-dotenv>=1.0.0

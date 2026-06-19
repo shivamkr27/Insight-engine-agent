@@ -145,6 +145,8 @@ class State(MessagesState):
     reasoning_steps:     List[str] = []
     current_step_index:  int   = 0
     step_results:        List[str] = []
+    # Feature: Web Search
+    web_search_enabled:  bool  = False
 
 
 class AgentState(MessagesState):
@@ -157,9 +159,10 @@ class AgentState(MessagesState):
     tool_call_count: Annotated[int, operator.add] = 0
     iteration_count: Annotated[int, operator.add] = 0
     # Propagated from main State
-    doc_filter:      str  = ""
-    answer_language: str  = "english"
-    user_memories:   List[str] = []
+    doc_filter:         str  = ""
+    answer_language:    str  = "english"
+    user_memories:      List[str] = []
+    web_search_enabled: bool = False
     # Feature: CRAG
     retrieval_attempts:   Annotated[int, operator.add] = 0
     last_retrieval_grade: str = ""
@@ -488,12 +491,17 @@ def reasoning_synthesizer(state: State, llm) -> dict:
 # ── Agent subgraph nodes ───────────────────────────────────────────────────────
 
 def orchestrator(state: AgentState, llm_with_tools) -> dict:
-    lang          = state.get("answer_language", "english")
-    doc_filter    = state.get("doc_filter", "")
-    user_memories = state.get("user_memories", [])
+    lang               = state.get("answer_language", "english")
+    doc_filter         = state.get("doc_filter", "")
+    user_memories      = state.get("user_memories", [])
+    web_search_enabled = state.get("web_search_enabled", False)
 
     memory_context = "\n".join(f"- {m}" for m in user_memories) if user_memories else ""
-    prompt_text    = get_orchestrator_prompt(language=lang, memory_context=memory_context)
+    prompt_text    = get_orchestrator_prompt(
+        language=lang,
+        memory_context=memory_context,
+        web_search_enabled=web_search_enabled,
+    )
 
     if doc_filter:
         prompt_text += (
@@ -726,8 +734,9 @@ def route_after_rewrite(state: State) -> str:
 
 
 def route_after_route_query(state: State):
-    qt   = state.get("query_type", "rag")
-    lang = state.get("answer_language", "english")
+    qt                 = state.get("query_type", "rag")
+    lang               = state.get("answer_language", "english")
+    web_search_enabled = state.get("web_search_enabled", False)
 
     if qt == "sql":
         return "text2sql_node"
@@ -741,47 +750,50 @@ def route_after_route_query(state: State):
         doc_b = state.get("compare_doc_b", "")
         return [
             Send("agent", {
-                "question":           f"What does the document say about: {topic}",
-                "question_index":     0,
-                "doc_filter":         doc_a,
-                "answer_language":    lang,
-                "user_memories":      state.get("user_memories", []),
-                "messages":           [],
-                "context_summary":    "",
-                "retrieval_keys":     set(),
-                "tool_call_count":    0,
-                "iteration_count":    0,
-                "retrieval_attempts": 0,
+                "question":            f"What does the document say about: {topic}",
+                "question_index":      0,
+                "doc_filter":          doc_a,
+                "answer_language":     lang,
+                "user_memories":       state.get("user_memories", []),
+                "web_search_enabled":  web_search_enabled,
+                "messages":            [],
+                "context_summary":     "",
+                "retrieval_keys":      set(),
+                "tool_call_count":     0,
+                "iteration_count":     0,
+                "retrieval_attempts":  0,
             }),
             Send("agent", {
-                "question":           f"What does the document say about: {topic}",
-                "question_index":     1,
-                "doc_filter":         doc_b,
-                "answer_language":    lang,
-                "user_memories":      state.get("user_memories", []),
-                "messages":           [],
-                "context_summary":    "",
-                "retrieval_keys":     set(),
-                "tool_call_count":    0,
-                "iteration_count":    0,
-                "retrieval_attempts": 0,
+                "question":            f"What does the document say about: {topic}",
+                "question_index":      1,
+                "doc_filter":          doc_b,
+                "answer_language":     lang,
+                "user_memories":       state.get("user_memories", []),
+                "web_search_enabled":  web_search_enabled,
+                "messages":            [],
+                "context_summary":     "",
+                "retrieval_keys":      set(),
+                "tool_call_count":     0,
+                "iteration_count":     0,
+                "retrieval_attempts":  0,
             }),
         ]
 
     # Default RAG
     return [
         Send("agent", {
-            "question":           q,
-            "question_index":     i,
-            "doc_filter":         "",
-            "answer_language":    lang,
-            "user_memories":      state.get("user_memories", []),
-            "messages":           [],
-            "context_summary":    "",
-            "retrieval_keys":     set(),
-            "tool_call_count":    0,
-            "iteration_count":    0,
-            "retrieval_attempts": 0,
+            "question":            q,
+            "question_index":      i,
+            "doc_filter":          "",
+            "answer_language":     lang,
+            "user_memories":       state.get("user_memories", []),
+            "web_search_enabled":  web_search_enabled,
+            "messages":            [],
+            "context_summary":     "",
+            "retrieval_keys":      set(),
+            "tool_call_count":     0,
+            "iteration_count":     0,
+            "retrieval_attempts":  0,
         })
         for i, q in enumerate(state["rewritten_questions"])
     ]
@@ -851,7 +863,10 @@ def build_graph(
     if checkpointer is None:
         checkpointer = create_checkpointer()
 
-    rag_tools      = tool_factory.create_rag_tools()
+    # Always include web_search in tool registry so it's available when toggled on.
+    # The orchestrator prompt controls whether the LLM actually calls it.
+    from .web_search import web_search as _web_search_tool
+    rag_tools      = tool_factory.create_rag_tools() + [_web_search_tool]
     llm_with_tools = llm.bind_tools(rag_tools)
     tool_node      = ToolNode(rag_tools)
 

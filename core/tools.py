@@ -262,7 +262,7 @@ class ToolFactory:
 
     # ── Tool creation ───────────────────────────────────────────────────────────
 
-    def create_rag_tools(self) -> list:
+    def create_rag_tools(self, web_search_enabled: bool = False) -> list:
         factory = self
 
         @tool
@@ -297,7 +297,11 @@ class ToolFactory:
 
             return _format_search_results(results, factory._ingestion)
 
-        return [search_chunks]
+        tools = [search_chunks]
+        if web_search_enabled:
+            from .web_search import web_search
+            tools.append(web_search)
+        return tools
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
