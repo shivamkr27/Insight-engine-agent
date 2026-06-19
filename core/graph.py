@@ -48,7 +48,6 @@ from langgraph.types import Command, Send
 from langgraph.prebuilt import ToolNode
 
 from langgraph.checkpoint.memory import InMemorySaver
-    _SQLITE_CHECKPOINTER = False
 
 from .config import (
     MAX_TOOL_CALLS, MAX_ITERATIONS, GRAPH_RECURSION_LIMIT,
