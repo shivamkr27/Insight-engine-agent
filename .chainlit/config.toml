@@ -7,8 +7,8 @@ unsafe_allow_html = false
 multi_modal       = true
 
 [UI]
-name          = "India Policy Intelligence Agent"
-description   = "Multi-agent RAG for Indian government policies, RBI circulars & Union Budget"
+name          = "InsightEngine AI"
+description   = "Intelligent document research assistant"
 default_theme = "dark"
 layout        = "wide"
 hide_cta      = true
@@ -18,14 +18,14 @@ custom_css    = "/public/custom.css"
 default = "dark"
 
 [UI.theme.dark]
-background = "#0D1B2A"
-paper      = "#0A1525"
-primary    = "#E8B84B"
+background = "#0B1120"
+paper      = "#0F1A2E"
+primary    = "#4F8EF7"
 
 [UI.theme.light]
-background = "#0D1B2A"
-paper      = "#0A1525"
-primary    = "#E8B84B"
+background = "#0B1120"
+paper      = "#0F1A2E"
+primary    = "#4F8EF7"
 
 [meta]
 generated_by = "chainlit"

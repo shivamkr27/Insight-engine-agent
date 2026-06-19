@@ -159,17 +159,11 @@ async def on_chat_start():
     await cl.Message(
         content=_welcome_text(user_id),
         actions=[
-            cl.Action(name="upload_pdf", payload={"action": "upload"}, label="📤 Upload PDF"),
-            cl.Action(name="ingest_all", payload={"action": "ingest"}, label="🔄 Ingest All Docs"),
-        ],
-    ).send()
-
-    await cl.Message(
-        content="**Features:**",
-        actions=[
-            cl.Action(name="toggle_hindi", payload={}, label="🇮🇳 Hindi Mode"),
-            cl.Action(name="study_mode",   payload={}, label="📚 Study Mode"),
-            cl.Action(name="compare_mode", payload={}, label="📊 Compare Docs"),
+            cl.Action(name="upload_pdf",   payload={"action": "upload"}, label="📤 Upload PDF"),
+            cl.Action(name="ingest_all",   payload={"action": "ingest"}, label="🔄 Ingest All"),
+            cl.Action(name="toggle_hindi", payload={},                   label="🇮🇳 Hindi Mode"),
+            cl.Action(name="study_mode",   payload={},                   label="📚 Study Mode"),
+            cl.Action(name="compare_mode", payload={},                   label="📊 Compare Docs"),
         ],
     ).send()
 
@@ -329,14 +323,13 @@ async def on_toggle_hindi(action: cl.Action):
 
     if new_lang == "hindi":
         await cl.Message(
-            content="🇮🇳 **Hindi Mode** enabled. All answers will be in Hindi (Devanagari script).\n\n"
-                    "Policy terms like PM-KISAN, RBI, repo rate will remain in English.",
-            actions=[cl.Action(name="toggle_hindi", payload={}, label="🇬🇧 Switch to English")],
+            content="🇮🇳 **Hindi Mode** enabled. All answers will be in Hindi (Devanagari script).",
+            actions=[cl.Action(name="toggle_hindi", payload={}, label="🇮🇳 Hindi ON — click to switch back")],
         ).send()
     else:
         await cl.Message(
             content="🇬🇧 **English Mode** enabled.",
-            actions=[cl.Action(name="toggle_hindi", payload={}, label="🇮🇳 Switch to Hindi")],
+            actions=[cl.Action(name="toggle_hindi", payload={}, label="🇮🇳 Hindi Mode")],
         ).send()
 
 
@@ -567,6 +560,50 @@ async def on_export_answer(action: cl.Action):
     ).send()
 
 
+# ── User feedback callbacks ────────────────────────────────────────────────────
+
+@cl.action_callback("rate_good")
+async def on_rate_good(action: cl.Action):
+    user_id  = cl.user_session.get("user_id", "default")
+    question = cl.user_session.get("last_question", "")
+    if question:
+        await asyncio.to_thread(
+            _memory_store.save_direct,
+            user_id,
+            f"User confirmed accurate answer on: {question[:80]}",
+            "preference", 2,
+        )
+    await cl.Message(content="✅ Marked as accurate.", author="System").send()
+
+
+@cl.action_callback("rate_review")
+async def on_rate_review(action: cl.Action):
+    user_id  = cl.user_session.get("user_id", "default")
+    question = cl.user_session.get("last_question", "")
+    if question:
+        await asyncio.to_thread(
+            _memory_store.save_direct,
+            user_id,
+            f"Partially correct response on: {question[:80]} — be more thorough next time",
+            "knowledge_gap", 2,
+        )
+    await cl.Message(content="⚠️ Noted — will be more thorough on similar topics.", author="System").send()
+
+
+@cl.action_callback("rate_wrong")
+async def on_rate_wrong(action: cl.Action):
+    user_id  = cl.user_session.get("user_id", "default")
+    question = cl.user_session.get("last_question", "")
+    if question:
+        await asyncio.to_thread(
+            _memory_store.save_direct,
+            user_id,
+            f"Wrong answer flagged for: {question[:80]} — verify carefully before answering similar queries",
+            "knowledge_gap", 3,
+        )
+    await cl.Message(content="🚫 Feedback saved — will be more careful on this topic.", author="System").send()
+
+
 # ── Core graph runner ──────────────────────────────────────────────────────────
 
 async def _run_graph(
@@ -679,25 +716,28 @@ async def _run_graph(
             last_ai = _extract_last_ai_message(final_state.values)
             response_msg.content = last_ai or "The agent could not generate a response. Please try rephrasing."
 
-        # Save clean answer before appending sources
+        # Save clean answer (before any decoration)
         cl.user_session.set("last_answer",  response_msg.content)
         cl.user_session.set("last_sources", sorted(_sources))
 
-        # Append sources inline below the answer
-        if _sources:
-            pills = "\n\n---\n📄 **Sources:** " + "  ·  ".join(f"`{s}`" for s in sorted(_sources))
-            response_msg.content += pills
-
         await response_msg.update()
 
-        await _send_metadata_badges(final_state.values)
+        # Sources as collapsible step
+        if _sources:
+            src_step = cl.Step(name=f"📄 Sources ({len(_sources)})", type="tool")
+            src_step.output = "\n".join(f"• {s}" for s in sorted(_sources))
+            await src_step.send()
 
+        # User feedback + copy/export row
         if response_msg.content:
             await cl.Message(
                 content="",
                 actions=[
-                    cl.Action(name="copy_answer",  payload={}, label="📋 Copy as Markdown"),
-                    cl.Action(name="export_answer", payload={}, label="📥 Export .md"),
+                    cl.Action(name="rate_good",    payload={}, label="✅ Accurate"),
+                    cl.Action(name="rate_review",  payload={}, label="⚠️ Partly right"),
+                    cl.Action(name="rate_wrong",   payload={}, label="🚫 Wrong"),
+                    cl.Action(name="copy_answer",  payload={}, label="📋"),
+                    cl.Action(name="export_answer", payload={}, label="📥"),
                 ],
             ).send()
 
@@ -829,11 +869,11 @@ async def _handle_pdf_elements(elements, user_id: str = "default") -> None:
 async def _send_doc_list(user_id: str = "default") -> None:
     docs = _ingestion.list_ingested_files(user_id=user_id)
     if docs:
-        lines   = "\n".join(f"• {d}" for d in docs)
-        content = f"**📚 Your Documents ({len(docs)}):**\n{lines}"
+        lines   = "\n".join(f"📄 `{d}`" for d in docs)
+        content = f"**Library ({len(docs)} documents):**\n\n{lines}"
     else:
-        content = "📂 No documents ingested yet. Upload PDFs to get started."
-    await cl.Message(content=content, author="Documents").send()
+        content = "📂 No documents yet. Click **Upload PDF** to add your first document."
+    await cl.Message(content=content, author="📚 Library").send()
 
 
 async def _send_history(user_id: str, current_thread_id: str) -> None:
@@ -858,32 +898,16 @@ async def _send_history(user_id: str, current_thread_id: str) -> None:
 
 
 async def _send_metadata_badges(state_values: dict) -> None:
-    badge  = state_values.get("judge_badge", "")
-    reason = state_values.get("judge_reason", "")
-    qtype  = state_values.get("query_type", "rag")
-    score  = state_values.get("judge_score", 0)
-
-    if not badge and qtype == "sql":
-        await cl.Message(content="ℹ️ **SQL Query** · Budget Database", author="Evaluation").send()
-        return
-
-    if not badge:
-        return
-
-    _VERDICT_ICON = {"🟢 Verified": "✅", "🟡 Review": "⚠️", "🔴 Warning": "🚫"}
-    icon        = _VERDICT_ICON.get(badge, "ℹ️")
+    qtype = state_values.get("query_type", "rag")
     qtype_label = {
-        "rag":       "RAG · Document Search",
-        "sql":       "SQL · Budget Data",
-        "compare":   "Compare · Two Documents",
-        "multi_hop": "Multi-Hop · Chained Reasoning",
-    }.get(qtype, "RAG · Document Search")
+        "rag":       "Document Search",
+        "sql":       "Budget Database",
+        "compare":   "Document Comparison",
+        "multi_hop": "Multi-Hop Reasoning",
+    }.get(qtype, "Document Search")
 
-    lines = [f"{icon} **{badge}** · Score {score}/5 · {qtype_label}"]
-    if reason:
-        lines.append(f"> *{reason}*")
-
-    await cl.Message(content="\n\n".join(lines), author="Evaluation").send()
+    if qtype == "sql":
+        await cl.Message(content=f"ℹ️ SQL Query · {qtype_label}", author="System").send()
 
 
 def _extract_last_ai_message(state_values: dict) -> str:
@@ -896,10 +920,16 @@ def _extract_last_ai_message(state_values: dict) -> str:
 def _welcome_text(user_id: str = "default") -> str:
     docs = _ingestion.list_ingested_files(user_id=user_id)
     doc_line = f"**{len(docs)} document(s) loaded**" if docs else "**No documents yet**"
-    return f"""## 🏛️ India Policy Intelligence Agent
+    return f"""## InsightEngine AI
 {doc_line} · [📊 Budget Dashboard](/public/budget.html)
 
-Ask anything about Indian government policies, RBI circulars, or Union Budget.
-Upload a PDF to get started, or ask about pre-loaded budget data.
+Ask anything from your uploaded documents — policies, reports, research, textbooks, contracts.
+
+| | Example |
+|--|---------|
+| 📄 | *Summarize the key points of this document* |
+| 📄 | *What are the main findings in section 3?* |
+| 📊 | *Which ministry had highest budget allocation in 2024?* |
+| 🔗 | *Compare the conclusions across my uploaded documents* |
 
 *Tip: Type* `what do you know about me?` *to see your preference memory.*"""

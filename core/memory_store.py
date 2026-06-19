@@ -135,6 +135,28 @@ class UserMemoryStore:
             logger.warning(f"fetch_relevant failed for user={user_id}: {exc}")
             return []
 
+    def save_direct(self, user_id: str, content: str, memory_type: str = "preference", importance: int = 2) -> None:
+        """Directly save a memory without LLM extraction (for user feedback ratings)."""
+        try:
+            doc_id = (
+                f"{user_id}_{memory_type}_"
+                + hashlib.md5(content.encode()).hexdigest()[:8]
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            self._vs.add_texts(
+                texts=[content],
+                metadatas=[{
+                    "user_id":     user_id,
+                    "memory_type": memory_type,
+                    "importance":  importance,
+                    "timestamp":   now,
+                }],
+                ids=[doc_id],
+            )
+            logger.info(f"Saved direct memory for user={user_id}: {content[:50]}")
+        except Exception as exc:
+            logger.warning(f"save_direct failed for user={user_id}: {exc}")
+
     def get_all(self, user_id: str) -> List[dict]:
         """Return all stored memories for a user (for the 'what do you know about me?' command)."""
         try:
