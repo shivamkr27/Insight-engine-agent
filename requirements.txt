@@ -34,7 +34,7 @@ sqlalchemy>=2.0.0
 tiktoken>=0.7.0
 
 # Retry with exponential backoff
-tenacity>=8.2.0
+tenacity>=9.1.4
 
 # Web search
 duckduckgo-search>=6.0.0
