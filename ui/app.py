@@ -1,5 +1,5 @@
 """
-India Policy Intelligence Agent — Chainlit UI
+InsightEngine AI — Chainlit UI
 
 Startup sequence (once per container):
   1. Load .env
@@ -17,6 +17,7 @@ Per-session (each browser tab / user):
   - answer_language  → "english" (default) or "hindi"
   - study_active     → True while a study session is running
   - compare_mode     → True while user is about to send a comparison query
+  - web_search_enabled → True when user has toggled web search on
   - user_memories    → fetched from UserMemoryStore on each message (topical)
 
 Auth (optional, enabled by setting CHAINLIT_AUTH_SECRET in .env):
@@ -48,7 +49,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 # Enable LangSmith tracing if configured
 if os.environ.get("LANGCHAIN_API_KEY"):
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-    os.environ.setdefault("LANGCHAIN_PROJECT", "india-policy-agent")
+    os.environ.setdefault("LANGCHAIN_PROJECT", "insightengine-ai")
 
 import chainlit as cl
 from langchain_core.messages import HumanMessage, AIMessage
@@ -100,8 +101,11 @@ except Exception as _e:
 # ── Regex: extract source filenames from formatted search results ──────────────
 _SOURCE_PATTERN = re.compile(r'^Source:\s*(.+?)$', re.MULTILINE)
 
+# ── Supported upload extensions ────────────────────────────────────────────────
+_SUPPORTED_EXT = (".pdf", ".docx", ".txt")
+
 # ── Global singletons ──────────────────────────────────────────────────────────
-logger.info("Starting India Policy Intelligence Agent...")
+logger.info("Starting InsightEngine AI...")
 
 _llm          = get_llm()
 _ingestion    = Ingestion()
@@ -113,8 +117,15 @@ _limiter      = RateLimiter(max_requests=RATE_LIMIT_REQUESTS, window_seconds=RAT
 _history      = ConversationStore(db_path=HISTORY_DB_PATH)
 _study_store  = StudyStore(db_path=STUDY_DB_PATH)
 
-from langgraph.checkpoint.memory import InMemorySaver
-_checkpointer = InMemorySaver()
+try:
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from core.config import SQLITE_CHECKPOINT_PATH
+    _checkpointer = SqliteSaver.from_conn_string(str(SQLITE_CHECKPOINT_PATH))
+    logger.info(f"Using SqliteSaver for persistence: {SQLITE_CHECKPOINT_PATH}")
+except Exception as _cp_err:
+    logger.warning(f"SqliteSaver unavailable ({_cp_err}), falling back to InMemorySaver")
+    from langgraph.checkpoint.memory import InMemorySaver
+    _checkpointer = InMemorySaver()
 _graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
 _study_graph  = build_study_graph(_llm, _factory, _checkpointer)
 logger.info("Agent ready.")
@@ -153,17 +164,17 @@ async def on_chat_start():
     cl.user_session.set("compare_mode",           False)
     cl.user_session.set("compare_doc_a",          "")
     cl.user_session.set("compare_doc_b",          "")
+    cl.user_session.set("web_search_enabled",     False)
 
     _history.upsert(thread_id, user_id)
 
     await cl.Message(
         content=_welcome_text(user_id),
         actions=[
-            cl.Action(name="upload_pdf",   payload={"action": "upload"}, label="📤 Upload PDF"),
-            cl.Action(name="ingest_all",   payload={"action": "ingest"}, label="🔄 Ingest All"),
-            cl.Action(name="toggle_hindi", payload={},                   label="🇮🇳 Hindi Mode"),
-            cl.Action(name="study_mode",   payload={},                   label="📚 Study Mode"),
-            cl.Action(name="compare_mode", payload={},                   label="📊 Compare Docs"),
+            cl.Action(name="toggle_hindi",      payload={}, label="🇮🇳 Hindi"),
+            cl.Action(name="study_mode",        payload={}, label="📚 Study"),
+            cl.Action(name="compare_mode",      payload={}, label="🔀 Compare"),
+            cl.Action(name="toggle_web_search", payload={}, label="🌐 Web Search"),
         ],
     ).send()
 
@@ -199,11 +210,14 @@ async def on_message(message: cl.Message):
             ).send()
         return
 
-    # PDF attached directly in chat
+    # Files attached directly in chat
     if message.elements:
-        pdf_elements = [e for e in message.elements if str(e.name).lower().endswith(".pdf")]
-        if pdf_elements:
-            await _handle_pdf_elements(pdf_elements, user_id=user_id)
+        file_elements = [
+            e for e in message.elements
+            if str(e.name).lower().endswith(_SUPPORTED_EXT)
+        ]
+        if file_elements:
+            await _handle_file_elements(file_elements, user_id=user_id)
             return
 
     # Rate limiting (keyed per session thread_id)
@@ -246,16 +260,18 @@ async def on_message(message: cl.Message):
             user_memories = await asyncio.to_thread(
                 _memory_store.fetch_relevant, user_id, message.content
             )
-            await _run_graph(
-                user_input=message.content,
-                config=config,
-                user_id=user_id,
-                answer_language=cl.user_session.get("answer_language", "english"),
-                compare_doc_a=doc_a,
-                compare_doc_b=doc_b,
-                user_memories=user_memories,
-            )
-            cl.user_session.set("compare_mode", False)
+            try:
+                await _run_graph(
+                    user_input=message.content,
+                    config=config,
+                    user_id=user_id,
+                    answer_language=cl.user_session.get("answer_language", "english"),
+                    compare_doc_a=doc_a,
+                    compare_doc_b=doc_b,
+                    user_memories=user_memories,
+                )
+            finally:
+                cl.user_session.set("compare_mode", False)
             return
 
     # ── Normal flow ───────────────────────────────────────────────────────
@@ -285,13 +301,18 @@ async def on_message(message: cl.Message):
 async def on_upload_action(action: cl.Action):
     user_id = cl.user_session.get("user_id", "default")
     files = await cl.AskFileMessage(
-        content="Upload a government policy PDF (RBI report, Budget speech, Economic Survey, etc.)",
-        accept=["application/pdf"],
+        content="Upload up to 5 files — PDF, Word (.docx), or text files. Select multiple with Shift+click.",
+        accept=[
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/plain",
+        ],
         max_size_mb=MAX_UPLOAD_SIZE_MB,
-        timeout=180,
+        max_files=5,
+        timeout=300,
     ).send()
     if files:
-        await _handle_pdf_elements(files, user_id=user_id)
+        await _handle_file_elements(files, user_id=user_id)
 
 
 @cl.action_callback("ingest_all")
@@ -310,7 +331,7 @@ async def on_ingest_all_action(action: cl.Action):
     if ingested:
         await cl.Message(content=f"✅ {ingested} document(s) ingested. Ready to answer questions!").send()
     else:
-        await cl.Message(content="No new documents found. Upload PDFs first.").send()
+        await cl.Message(content="No new documents found. Upload files first.").send()
 
 
 # ── Feature 1: Hindi Mode toggle ───────────────────────────────────────────────
@@ -329,7 +350,7 @@ async def on_toggle_hindi(action: cl.Action):
     else:
         await cl.Message(
             content="🇬🇧 **English Mode** enabled.",
-            actions=[cl.Action(name="toggle_hindi", payload={}, label="🇮🇳 Hindi Mode")],
+            actions=[cl.Action(name="toggle_hindi", payload={}, label="🇮🇳 Hindi")],
         ).send()
 
 
@@ -341,7 +362,7 @@ async def on_study_mode(action: cl.Action):
     docs    = _ingestion.list_ingested_files(user_id=user_id)
 
     if not docs:
-        await cl.Message(content="No documents ingested yet. Upload and ingest PDFs first.").send()
+        await cl.Message(content="No documents ingested yet. Upload files first.").send()
         return
 
     doc_actions = [
@@ -407,7 +428,7 @@ async def on_compare_mode(action: cl.Action):
 
     if len(docs) < 2:
         await cl.Message(
-            content="Need at least **2 ingested documents** to use Compare Mode. Upload more PDFs first."
+            content="Need at least **2 ingested documents** to use Compare Mode. Upload more files first."
         ).send()
         return
 
@@ -420,7 +441,7 @@ async def on_compare_mode(action: cl.Action):
         for d in docs[:6]
     ]
     await cl.Message(
-        content="**📊 Compare Mode** — Select **Document A**:",
+        content="**🔀 Compare Mode** — Select **Document A**:",
         actions=doc_actions,
     ).send()
 
@@ -457,7 +478,7 @@ async def on_compare_pick_b(action: cl.Action):
 
     await cl.Message(
         content=(
-            f"**📊 Compare Mode Active**\n\n"
+            f"**🔀 Compare Mode Active**\n\n"
             f"**A:** `{doc_a}`  vs  **B:** `{doc_b}`\n\n"
             f"Type your comparison topic, e.g. *agriculture budget*, *monetary policy changes*, "
             f"*scheme beneficiaries*"
@@ -471,7 +492,30 @@ async def on_exit_compare(action: cl.Action):
     cl.user_session.set("compare_mode",  False)
     cl.user_session.set("compare_doc_a", "")
     cl.user_session.set("compare_doc_b", "")
-    await cl.Message(content="📊 Compare mode cancelled. Back to normal chat.").send()
+    await cl.Message(content="🔀 Compare mode cancelled. Back to normal chat.").send()
+
+
+# ── Feature 4: Web Search toggle ───────────────────────────────────────────────
+
+@cl.action_callback("toggle_web_search")
+async def on_toggle_web_search(action: cl.Action):
+    current = cl.user_session.get("web_search_enabled", False)
+    new_val = not current
+    cl.user_session.set("web_search_enabled", new_val)
+
+    if new_val:
+        await cl.Message(
+            content=(
+                "🌐 **Web Search ON** — I'll search your documents first, then the web if needed.\n\n"
+                "*Note: Web results are real-time but less reliable than your documents.*"
+            ),
+            actions=[cl.Action(name="toggle_web_search", payload={}, label="🌐 Web Search ON — click to disable")],
+        ).send()
+    else:
+        await cl.Message(
+            content="🌐 **Web Search OFF** — Answering from your uploaded documents only.",
+            actions=[cl.Action(name="toggle_web_search", payload={}, label="🌐 Web Search")],
+        ).send()
 
 
 # ── Conversation history callbacks ─────────────────────────────────────────────
@@ -510,54 +554,6 @@ async def on_resume_conversation(action: cl.Action):
         preview = "**Conversation resumed.** Continue from where you left off."
 
     await cl.Message(content=preview).send()
-
-
-@cl.action_callback("copy_answer")
-async def on_copy_answer(action: cl.Action):
-    answer   = cl.user_session.get("last_answer", "")
-    question = cl.user_session.get("last_question", "")
-    sources  = cl.user_session.get("last_sources", [])
-    if not answer:
-        await cl.Message(content="No answer to copy.").send()
-        return
-    src_block = "\n".join(f"- {s}" for s in sources) if sources else "_No sources_"
-    copyable  = f"**Q:** {question}\n\n**A:** {answer}\n\n**Sources:**\n{src_block}"
-    await cl.Message(content=f"```markdown\n{copyable}\n```", author="Copy").send()
-
-
-@cl.action_callback("export_answer")
-async def on_export_answer(action: cl.Action):
-    answer   = cl.user_session.get("last_answer", "")
-    question = cl.user_session.get("last_question", "")
-    sources  = cl.user_session.get("last_sources", [])
-    if not answer:
-        await cl.Message(content="No answer to export.").send()
-        return
-
-    from datetime import datetime, timezone
-    now     = datetime.now(timezone.utc)
-    ts      = now.strftime("%Y-%m-%d %H:%M UTC")
-    ts_file = now.strftime("%Y%m%d_%H%M%S")
-    src = "\n".join(f"- 📄 {s}" for s in sources) if sources else "_No sources_"
-    md  = (
-        f"# Policy Research Export\n\n"
-        f"**Date:** {ts}  \n"
-        f"**System:** India Policy Intelligence Agent\n\n"
-        f"---\n\n"
-        f"## Question\n\n{question}\n\n"
-        f"## Answer\n\n{answer}\n\n"
-        f"## Sources\n\n{src}\n\n"
-        f"---\n*Generated by India Policy Intelligence Agent*"
-    )
-
-    export_path = Path(DOCS_DIR).parent / "data" / f"export_{ts_file}.md"
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    export_path.write_text(md, encoding="utf-8")
-
-    await cl.Message(
-        content="Export ready:",
-        elements=[cl.File(name="policy_answer.md", path=str(export_path), display="inline")],
-    ).send()
 
 
 # ── User feedback callbacks ────────────────────────────────────────────────────
@@ -619,13 +615,16 @@ async def _run_graph(
     if user_memories is None:
         user_memories = []
 
+    web_search_enabled = cl.user_session.get("web_search_enabled", False)
+
     if resume:
         graph_input = None
     else:
         graph_input: dict = {
-            "messages":       [HumanMessage(content=user_input)],
-            "answer_language": answer_language,
-            "user_memories":   user_memories,
+            "messages":          [HumanMessage(content=user_input)],
+            "answer_language":   answer_language,
+            "user_memories":     user_memories,
+            "web_search_enabled": web_search_enabled,
         }
         if compare_doc_a and compare_doc_b:
             graph_input["query_type"]    = "compare"
@@ -655,7 +654,7 @@ async def _run_graph(
                 if token:
                     await response_msg.stream_token(token)
 
-            # Show searching step the moment a tool call begins (query available immediately)
+            # Show searching step the moment a tool call begins
             elif kind == "on_tool_start" and event.get("name") == "search_chunks":
                 tool_input = event["data"].get("input") or {}
                 query_str  = tool_input.get("query", "") if isinstance(tool_input, dict) else str(tool_input)
@@ -663,6 +662,14 @@ async def _run_graph(
                     async with cl.Step(name=f"🔍 Searching: {query_str[:60]}", type="tool") as step:
                         step.input  = query_str
                         step.output = "Hybrid search (dense + BM25 + reranking)..."
+
+            elif kind == "on_tool_start" and event.get("name") == "web_search":
+                tool_input = event["data"].get("input") or {}
+                query_str  = tool_input.get("query", "") if isinstance(tool_input, dict) else str(tool_input)
+                if query_str:
+                    async with cl.Step(name=f"🌐 Web search: {query_str[:60]}", type="tool") as step:
+                        step.input  = query_str
+                        step.output = "Searching the web..."
 
             # Extract sources and show content preview when tool finishes
             elif kind == "on_tool_end" and event.get("name") == "search_chunks":
@@ -702,10 +709,12 @@ async def _run_graph(
         if final_state.next and "request_clarification" in final_state.next:
             cl.user_session.set("awaiting_clarification", True)
             clarification = _extract_last_ai_message(final_state.values)
-            if response_msg.content:
+            try:
+                if not response_msg.content:
+                    response_msg.content = "..."
                 await response_msg.update()
-            else:
-                await response_msg.remove()
+            except Exception:
+                pass
             if clarification:
                 await cl.Message(
                     content=f"**Clarification needed:**\n\n{clarification}"
@@ -728,20 +737,18 @@ async def _run_graph(
             src_step.output = "\n".join(f"• {s}" for s in sorted(_sources))
             await src_step.send()
 
-        # User feedback + copy/export row
+        # User feedback buttons
         if response_msg.content:
             await cl.Message(
                 content="",
                 actions=[
-                    cl.Action(name="rate_good",    payload={}, label="✅ Accurate"),
-                    cl.Action(name="rate_review",  payload={}, label="⚠️ Partly right"),
-                    cl.Action(name="rate_wrong",   payload={}, label="🚫 Wrong"),
-                    cl.Action(name="copy_answer",  payload={}, label="📋"),
-                    cl.Action(name="export_answer", payload={}, label="📥"),
+                    cl.Action(name="rate_good",   payload={}, label="✅ Accurate"),
+                    cl.Action(name="rate_review", payload={}, label="⚠️ Partly right"),
+                    cl.Action(name="rate_wrong",  payload={}, label="🚫 Wrong"),
                 ],
             ).send()
 
-        # Fire-and-forget memory extraction — runs in background after response delivered
+        # Fire-and-forget memory extraction
         msgs_for_memory = list(final_state.values.get("messages", []))
         if msgs_for_memory and not final_state.next:
             asyncio.create_task(
@@ -783,7 +790,6 @@ async def _run_study_graph(
         final_state = _study_graph.get_state(config)
 
         if not final_state.next:
-            # Session reached END (show_final_score ran)
             cl.user_session.set("study_active",    False)
             study_thread_id = config["configurable"]["thread_id"]
             score = final_state.values.get("score", 0.0)
@@ -804,14 +810,14 @@ async def _run_study_graph(
 def _sanitize_filename(name: str) -> str:
     safe = Path(name).name
     safe = safe.replace("..", "").strip()
-    return safe or "upload.pdf"
+    return safe or "upload.bin"
 
 
 def _is_valid_pdf(content: bytes) -> bool:
     return content[:4] == b"%PDF"
 
 
-async def _handle_pdf_elements(elements, user_id: str = "default") -> None:
+async def _handle_file_elements(elements, user_id: str = "default") -> None:
     os.makedirs(DOCS_DIR, exist_ok=True)
     ingested_names = []
     max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
@@ -820,7 +826,8 @@ async def _handle_pdf_elements(elements, user_id: str = "default") -> None:
         filename = _sanitize_filename(
             element.name if hasattr(element, "name") else Path(element.path).name
         )
-        if not filename.lower().endswith(".pdf"):
+        if not filename.lower().endswith(_SUPPORTED_EXT):
+            await cl.Message(content=f"**{filename}** — unsupported type. Use PDF, DOCX, or TXT.").send()
             continue
 
         if hasattr(element, "path") and element.path:
@@ -835,14 +842,14 @@ async def _handle_pdf_elements(elements, user_id: str = "default") -> None:
             await cl.Message(content=f"**{filename}** exceeds {MAX_UPLOAD_SIZE_MB}MB limit.").send()
             continue
 
-        if not _is_valid_pdf(content):
+        if filename.lower().endswith(".pdf") and not _is_valid_pdf(content):
             await cl.Message(content=f"**{filename}** does not appear to be a valid PDF.").send()
             continue
 
         dest = Path(DOCS_DIR) / filename
         dest.write_bytes(content)
 
-        await cl.Message(content=f"Processing **{filename}**… embedding may take 1-2 minutes for large PDFs.").send()
+        await cl.Message(content=f"Processing **{filename}**… this may take 1-2 minutes for large files.").send()
         async with cl.Step(name=f"📄 Ingesting {filename}", type="tool") as step:
             step.input = str(dest)
             stats = await asyncio.to_thread(_ingestion.ingest_single, str(dest), user_id)
@@ -872,7 +879,7 @@ async def _send_doc_list(user_id: str = "default") -> None:
         lines   = "\n".join(f"📄 `{d}`" for d in docs)
         content = f"**Library ({len(docs)} documents):**\n\n{lines}"
     else:
-        content = "📂 No documents yet. Click **Upload PDF** to add your first document."
+        content = "📂 No documents yet. Drop a PDF, Word doc, or text file here to get started."
     await cl.Message(content=content, author="📚 Library").send()
 
 
@@ -897,19 +904,6 @@ async def _send_history(user_id: str, current_thread_id: str) -> None:
     ).send()
 
 
-async def _send_metadata_badges(state_values: dict) -> None:
-    qtype = state_values.get("query_type", "rag")
-    qtype_label = {
-        "rag":       "Document Search",
-        "sql":       "Budget Database",
-        "compare":   "Document Comparison",
-        "multi_hop": "Multi-Hop Reasoning",
-    }.get(qtype, "Document Search")
-
-    if qtype == "sql":
-        await cl.Message(content=f"ℹ️ SQL Query · {qtype_label}", author="System").send()
-
-
 def _extract_last_ai_message(state_values: dict) -> str:
     for msg in reversed(state_values.get("messages", [])):
         if isinstance(msg, AIMessage) and msg.content:
@@ -919,17 +913,15 @@ def _extract_last_ai_message(state_values: dict) -> str:
 
 def _welcome_text(user_id: str = "default") -> str:
     docs = _ingestion.list_ingested_files(user_id=user_id)
-    doc_line = f"**{len(docs)} document(s) loaded**" if docs else "**No documents yet**"
-    return f"""## InsightEngine AI
-{doc_line} · [📊 Budget Dashboard](/public/budget.html)
-
-Ask anything from your uploaded documents — policies, reports, research, textbooks, contracts.
-
-| | Example |
-|--|---------|
-| 📄 | *Summarize the key points of this document* |
-| 📄 | *What are the main findings in section 3?* |
-| 📊 | *Which ministry had highest budget allocation in 2024?* |
-| 🔗 | *Compare the conclusions across my uploaded documents* |
-
-*Tip: Type* `what do you know about me?` *to see your preference memory.*"""
+    doc_count = len(docs)
+    if doc_count:
+        doc_line = f"**{doc_count} document{'s' if doc_count > 1 else ''} ready**"
+    else:
+        doc_line = "**No documents yet**"
+    return (
+        f"## InsightEngine AI\n\n"
+        f"{doc_line} · [Budget Dashboard](/public/budget.html)\n\n"
+        f"Ask anything from your documents, or toggle web search for live information. "
+        f"Drop a PDF, Word doc, or text file here to get started.\n\n"
+        f"*Tip: Mention a filename to search a specific document — \"summarize Unit1_PartA.pdf\"*"
+    )
