@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════
    India Policy Intelligence Agent — Dark Navy + Gold Theme
-   Stable selectors only: MUI CSS vars, data-testid, element types,
-   MUI component root classes (Mui* prefixes never change).
+   Dual-selector strategy: MUI CSS vars + data-testid + data-author-role
+   + .step/.actions-list (Chainlit internals) + MUI class prefixes.
 ═══════════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
@@ -17,7 +17,7 @@
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
 
-/* ── Element type selectors ─────────────────────────────────────── */
+/* ── Base ────────────────────────────────────────────────────────── */
 body, html {
   background: #0D1B2A !important;
   color: #E2EAF4 !important;
@@ -102,18 +102,10 @@ h4, h5, h6 { color: #9AB0CB !important; }
   box-shadow: none !important;
 }
 .MuiButton-root  { color: #E8B84B !important; }
-.MuiIconButton-root {
-  color: #9AB0CB !important;
-}
-.MuiIconButton-root:hover {
-  background: rgba(232,184,75,0.08) !important;
-}
-.MuiListItemButton-root:hover {
-  background: rgba(232,184,75,0.08) !important;
-}
-.MuiDivider-root {
-  border-color: rgba(232,184,75,0.12) !important;
-}
+.MuiIconButton-root { color: #9AB0CB !important; }
+.MuiIconButton-root:hover { background: rgba(232,184,75,0.08) !important; }
+.MuiListItemButton-root:hover { background: rgba(232,184,75,0.08) !important; }
+.MuiDivider-root { border-color: rgba(232,184,75,0.12) !important; }
 .MuiChip-root {
   background: #162032 !important;
   color: #9AB0CB !important;
@@ -134,22 +126,18 @@ h4, h5, h6 { color: #9AB0CB !important; }
   border-radius: 12px !important;
 }
 
-/* ── data-testid — Chainlit-guaranteed selectors ────────────────── */
-
-/* Header */
+/* ── data-testid — Chainlit stable selectors ────────────────────── */
 [data-testid="header"] {
   background: #0A1525 !important;
   border-bottom: 1px solid rgba(232,184,75,0.3) !important;
 }
 
-/* User bubble */
 [data-testid="user-message"] {
   background: #1a2e4a !important;
   border: 1px solid rgba(232,184,75,0.18) !important;
   border-radius: 12px 4px 12px 12px !important;
 }
 
-/* Agent bubble */
 [data-testid="assistant-message"] {
   background: #0A1525 !important;
   border: 1px solid rgba(232,184,75,0.1) !important;
@@ -157,7 +145,6 @@ h4, h5, h6 { color: #9AB0CB !important; }
   box-shadow: 0 2px 10px rgba(0,0,0,0.25) !important;
 }
 
-/* Step chip — gold left border */
 [data-testid="step"] {
   background: #162032 !important;
   border: 1px solid rgba(232,184,75,0.15) !important;
@@ -166,38 +153,38 @@ h4, h5, h6 { color: #9AB0CB !important; }
   color: #9AB0CB !important;
 }
 
-/* Input area */
-[data-testid="chat-input"] {
+[data-testid="chat-input"],
+#chat-input {
   background: #0A1525 !important;
   border: 1px solid rgba(232,184,75,0.25) !important;
   border-radius: 12px !important;
 }
-[data-testid="chat-input"]:focus-within {
+[data-testid="chat-input"]:focus-within,
+#chat-input:focus-within {
   border-color: #E8B84B !important;
   box-shadow: 0 0 0 3px rgba(232,184,75,0.12) !important;
 }
 
-/* Send button */
 [data-testid="send-button"] {
   background: #1a2e4a !important;
   color: #E8B84B !important;
   border-radius: 8px !important;
 }
 
-/* Action buttons */
-[data-testid="action-button"] {
+[data-testid="action-button"],
+.actions-list button {
   background: #1a2e4a !important;
   color: #E8B84B !important;
   border: 1px solid rgba(232,184,75,0.3) !important;
   border-radius: 8px !important;
   font-weight: 500 !important;
 }
-[data-testid="action-button"]:hover {
+[data-testid="action-button"]:hover,
+.actions-list button:hover {
   background: #243d5f !important;
   border-color: #E8B84B !important;
 }
 
-/* New chat button */
 [data-testid="new-chat-button"] {
   background: #1a2e4a !important;
   color: #E8B84B !important;
@@ -205,11 +192,31 @@ h4, h5, h6 { color: #9AB0CB !important; }
   border-radius: 8px !important;
 }
 
-/* Element / source cards */
 [data-testid="element"] {
   background: #0A1525 !important;
   border: 1px solid rgba(232,184,75,0.12) !important;
   border-radius: 8px !important;
+  color: #9AB0CB !important;
+}
+
+/* ── data-author-role — alternate Chainlit message selectors ─────── */
+[data-author-role="user"] {
+  background: #1a2e4a !important;
+  border: 1px solid rgba(232,184,75,0.18) !important;
+  border-radius: 12px 4px 12px 12px !important;
+}
+[data-author-role="assistant"] {
+  background: #0A1525 !important;
+  border: 1px solid rgba(232,184,75,0.1) !important;
+  border-radius: 4px 12px 12px 12px !important;
+}
+
+/* ── .step — Chainlit thinking chip (alternate selector) ─────────── */
+.step {
+  background: #162032 !important;
+  border: 1px solid rgba(232,184,75,0.15) !important;
+  border-left: 3px solid #E8B84B !important;
+  border-radius: 6px !important;
   color: #9AB0CB !important;
 }
 
@@ -226,10 +233,12 @@ h4, h5, h6 { color: #9AB0CB !important; }
 @media (max-width: 768px) {
   textarea { font-size: 16px !important; }
   [data-testid="assistant-message"],
-  [data-testid="user-message"] {
+  [data-testid="user-message"],
+  [data-author-role="user"],
+  [data-author-role="assistant"] {
     max-width: calc(100vw - 24px) !important;
   }
-  [data-testid="step"] {
+  [data-testid="step"], .step {
     font-size: 0.75rem !important;
     padding: 5px 8px !important;
   }
