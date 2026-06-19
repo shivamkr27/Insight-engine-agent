@@ -1,218 +1,448 @@
 /* ═══════════════════════════════════════════════════════════════════
-   India Policy Intelligence Agent — Constitution / Parchment Theme
-
+   India Policy Intelligence Agent — Dark Navy + Gold Theme
    Palette:
-     Parchment   #FAF3E0  — main background (like aged paper)
-     Cream card  #FFF8ED  — message / card backgrounds
-     Dark Brown  #3B2314  — sidebar (like leather-bound books)
-     Gold        #C49A1B  — accent, buttons, headings
-     Deep Text   #1A0F00  — body text
-     Saffron     #E07B00  — user message accent
-     India Green #1A6B2A  — verified / success states
+     Navy dark  #0A1525  — sidebar / secondary background
+     Navy main  #0D1B2A  — primary background
+     Navy card  #162032  — step / chip background
+     Navy mid   #1a2e4a  — user bubble / accent buttons
+     Gold       #E8B84B  — primary accent
+     Text       #E2EAF4  — body text
 ═══════════════════════════════════════════════════════════════════ */
 
-/* ── Google Fonts ──────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Lato:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
-/* ── Root & Body ───────────────────────────────────────────────────── */
-:root {
-  --parchment:    #FAF3E0;
-  --cream:        #FFF8ED;
-  --brown-dark:   #3B2314;
-  --brown-mid:    #6B3A1F;
-  --gold:         #C49A1B;
-  --gold-light:   #E8C84A;
-  --text-dark:    #1A0F00;
-  --saffron:      #E07B00;
-  --india-green:  #1A6B2A;
-  --border:       rgba(196, 154, 27, 0.35);
+/* ── Core design tokens ─────────────────────────────────────────── */
+:root,
+html[data-theme="dark"],
+html[data-theme="light"] {
+  --color-background-primary:   #0D1B2A;
+  --color-background-secondary: #0A1525;
+  --color-background-tertiary:  #162032;
+  --color-text-primary:   #E2EAF4;
+  --color-text-secondary: #9AB0CB;
+  --color-text-tertiary:  #5C7A99;
+  --color-border-primary:   rgba(232, 184, 75, 0.45);
+  --color-border-secondary: rgba(232, 184, 75, 0.22);
+  --color-border-tertiary:  rgba(232, 184, 75, 0.09);
+  --color-background-success: rgba(39, 174, 96, 0.12);
+  --color-text-success:   #52c77a;
+  --color-border-success: rgba(39, 174, 96, 0.35);
+  --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --border-radius-lg: 14px;
+  --border-radius-md:  8px;
+  --navy-dark: #0A1525;
+  --navy-mid:  #1a2e4a;
+  --navy-light:#243d5f;
+  --gold: #E8B84B;
 }
 
 body, #root, html {
-  background-color: var(--parchment) !important;
-  color: var(--text-dark) !important;
-  font-family: 'Lato', 'Segoe UI', sans-serif !important;
+  background-color: var(--color-background-primary) !important;
+  color: var(--color-text-primary) !important;
+  font-family: var(--font-sans) !important;
 }
 
-/* ── App Header / Title bar ────────────────────────────────────────── */
-header, [class*="header"], [data-testid="header"] {
-  background: linear-gradient(135deg, var(--brown-dark) 0%, var(--brown-mid) 100%) !important;
-  border-bottom: 3px solid var(--gold) !important;
+/* ── Header ─────────────────────────────────────────────────────── */
+header,
+[data-testid="header"],
+[class*="Header"] {
+  background: var(--navy-dark) !important;
+  border-bottom: 1px solid var(--color-border-primary) !important;
 }
 
-header h1, header span, [class*="header"] h1 {
-  font-family: 'EB Garamond', Georgia, serif !important;
+header h1,
+header span,
+[class*="Header"] h1,
+[class*="Header"] span {
   color: var(--gold) !important;
-  letter-spacing: 0.03em;
+  font-weight: 600 !important;
 }
 
-/* ── Sidebar ───────────────────────────────────────────────────────── */
+/* App title text */
+[class*="watermark"],
+[class*="Watermark"] {
+  opacity: 0.5;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
 aside,
-[class*="sidebar"],
+[class*="Sidebar"],
 [data-testid="sidebar"],
 .MuiDrawer-paper {
-  background: linear-gradient(180deg, var(--brown-dark) 0%, #2A1A0E 100%) !important;
-  border-right: 2px solid var(--gold) !important;
-  color: var(--parchment) !important;
+  background: var(--navy-dark) !important;
+  border-right: 1px solid var(--color-border-primary) !important;
 }
 
-/* Sidebar text */
-aside *, [class*="sidebar"] * {
-  color: var(--parchment) !important;
+/* Sidebar conversation list items */
+[class*="Sidebar"] a,
+[class*="Sidebar"] button,
+aside a,
+aside button {
+  color: var(--color-text-secondary) !important;
+  border-radius: 7px !important;
 }
 
-/* Sidebar buttons */
-aside button, [class*="sidebar"] button {
-  background: rgba(196, 154, 27, 0.2) !important;
-  border: 1px solid var(--gold) !important;
+[class*="Sidebar"] a:hover,
+aside button:hover {
+  background: rgba(232, 184, 75, 0.08) !important;
+  color: var(--color-text-primary) !important;
+}
+
+[class*="Sidebar"] a[class*="active"],
+[class*="Sidebar"] button[class*="active"] {
+  background: rgba(232, 184, 75, 0.12) !important;
   color: var(--gold) !important;
-  border-radius: 6px !important;
-}
-aside button:hover, [class*="sidebar"] button:hover {
-  background: rgba(196, 154, 27, 0.4) !important;
 }
 
-/* ── Main chat area ─────────────────────────────────────────────────── */
-main, [class*="main"], [data-testid="main"] {
-  background-color: var(--parchment) !important;
+/* Sidebar new chat / icon buttons */
+[class*="NewChat"],
+[data-testid="new-chat-button"] {
+  background: var(--navy-mid) !important;
+  color: var(--gold) !important;
+  border: 1px solid var(--color-border-secondary) !important;
+  border-radius: 8px !important;
 }
 
-/* ── Message containers ─────────────────────────────────────────────── */
-[class*="message"],
-.message,
-[data-testid="message"] {
-  background-color: var(--cream) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 10px !important;
-  font-family: 'EB Garamond', Georgia, serif !important;
-  font-size: 1.05rem !important;
-  line-height: 1.7 !important;
-  color: var(--text-dark) !important;
-  box-shadow: 0 2px 8px rgba(59, 35, 20, 0.08) !important;
+/* ── Main chat area ──────────────────────────────────────────────── */
+main,
+[data-testid="main"],
+[class*="Main"] {
+  background: var(--color-background-primary) !important;
 }
 
-/* User messages — subtle saffron left border */
-[class*="human"] [class*="message"],
-[data-testid="human-message"],
-.user-message {
-  border-left: 4px solid var(--saffron) !important;
-  background-color: #FFF4E5 !important;
-}
-
-/* AI / assistant messages — gold left border */
-[class*="assistant"] [class*="message"],
+/* ── Message containers ──────────────────────────────────────────── */
+/* AI / assistant messages */
 [data-testid="assistant-message"],
-.assistant-message {
-  border-left: 4px solid var(--gold) !important;
+[class*="AssistantMessage"],
+[class*="assistant-message"] {
+  background: var(--color-background-secondary) !important;
+  border: 1px solid var(--color-border-tertiary) !important;
+  border-radius: 4px 12px 12px 12px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
 }
 
-/* ── Headings inside messages ───────────────────────────────────────── */
-[class*="message"] h1,
-[class*="message"] h2,
-[class*="message"] h3 {
-  font-family: 'EB Garamond', Georgia, serif !important;
-  color: var(--brown-dark) !important;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 4px;
+/* User messages */
+[data-testid="user-message"],
+[class*="UserMessage"],
+[class*="user-message"] {
+  background: var(--navy-mid) !important;
+  border: 1px solid rgba(232, 184, 75, 0.18) !important;
+  border-radius: 12px 4px 12px 12px !important;
 }
 
-/* ── Code blocks ─────────────────────────────────────────────────────── */
-[class*="message"] pre,
-[class*="message"] code {
-  background: #EDE4CC !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 6px !important;
-  font-family: 'Courier New', monospace !important;
-  color: var(--brown-dark) !important;
+/* Generic message content */
+[class*="message"],
+[data-testid="message"] {
+  color: var(--color-text-primary) !important;
 }
 
-/* ── Steps (agent thinking / tool calls) ─────────────────────────────── */
-[class*="step"],
-.step,
-[data-testid="step"] {
-  background: #F0E8D0 !important;
-  border-left: 3px solid var(--gold) !important;
-  border-radius: 6px !important;
-  font-size: 0.9rem !important;
-  font-family: 'Lato', sans-serif !important;
-}
-
-/* ── Action buttons (Upload / Ingest) ────────────────────────────────── */
-[class*="action-button"],
-button[class*="action"],
-.chainlit-action-button {
-  background: var(--brown-dark) !important;
+/* Author / role labels */
+[class*="author"],
+[data-testid="author"] {
   color: var(--gold) !important;
-  border: 1px solid var(--gold) !important;
-  border-radius: 8px !important;
-  font-family: 'Lato', sans-serif !important;
+  font-size: 0.72rem !important;
   font-weight: 600 !important;
-  transition: all 0.2s ease !important;
-}
-[class*="action-button"]:hover {
-  background: var(--gold) !important;
-  color: var(--brown-dark) !important;
-}
-
-/* ── Chat input area ─────────────────────────────────────────────────── */
-[class*="input"],
-textarea,
-[data-testid="chat-input"] {
-  background: var(--cream) !important;
-  border: 2px solid var(--border) !important;
-  border-radius: 10px !important;
-  color: var(--text-dark) !important;
-  font-family: 'Lato', sans-serif !important;
-}
-[class*="input"]:focus, textarea:focus {
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 0 3px rgba(196, 154, 27, 0.2) !important;
-}
-
-/* Send button */
-[class*="send"], button[type="submit"] {
-  background: var(--gold) !important;
-  color: var(--brown-dark) !important;
-  border-radius: 8px !important;
-}
-[class*="send"]:hover {
-  background: var(--gold-light) !important;
-}
-
-/* ── Scrollbar ───────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 7px; }
-::-webkit-scrollbar-track { background: var(--parchment); }
-::-webkit-scrollbar-thumb {
-  background: rgba(196, 154, 27, 0.5);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--gold); }
-
-/* ── Horizontal rule — Tricolor divider ──────────────────────────────── */
-[class*="message"] hr {
-  border: none !important;
-  height: 3px !important;
-  background: linear-gradient(
-    to right,
-    var(--saffron)  33%,
-    #ffffff         33%,
-    #ffffff         66%,
-    var(--india-green) 66%
-  ) !important;
-  margin: 12px 0 !important;
-}
-
-/* ── Author name (System, 📚 Documents, etc.) ─────────────────────────── */
-[class*="author"], .author {
-  font-family: 'Lato', sans-serif !important;
-  font-size: 0.78rem !important;
-  color: var(--brown-mid) !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.04em !important;
+  letter-spacing: 0.06em !important;
   text-transform: uppercase !important;
 }
 
-/* ── Badge elements (Verified / Review / Warning) ────────────────────── */
-.badge-verified { color: var(--india-green) !important; font-weight: 700; }
-.badge-review   { color: var(--saffron) !important;    font-weight: 700; }
-.badge-warning  { color: #B22222 !important;           font-weight: 700; }
+/* Avatar circles */
+[class*="avatar"],
+[class*="Avatar"] {
+  background: var(--navy-mid) !important;
+  color: var(--gold) !important;
+  border: 1px solid var(--color-border-secondary) !important;
+}
+
+/* ── Step elements (thinking chips) ─────────────────────────────── */
+[data-testid="step"],
+[class*="Step"],
+[class*="step-container"] {
+  background: var(--color-background-tertiary) !important;
+  border: 1px solid var(--color-border-tertiary) !important;
+  border-left: 3px solid var(--gold) !important;
+  border-radius: 6px !important;
+  color: var(--color-text-tertiary) !important;
+}
+
+[class*="step-name"],
+[data-testid="step-name"] {
+  color: var(--gold) !important;
+  font-weight: 500 !important;
+  font-size: 0.82rem !important;
+}
+
+[class*="step-input"],
+[class*="step-output"],
+[data-testid="step-output"] {
+  color: var(--color-text-secondary) !important;
+  font-size: 0.80rem !important;
+}
+
+/* ── Input area ──────────────────────────────────────────────────── */
+[data-testid="chat-input"],
+[class*="inputBox"],
+[class*="InputBox"],
+[class*="inputArea"] {
+  background: var(--color-background-secondary) !important;
+  border: 1px solid var(--color-border-secondary) !important;
+  border-radius: 12px !important;
+}
+
+[data-testid="chat-input"]:focus-within,
+[class*="inputBox"]:focus-within,
+[class*="InputBox"]:focus-within {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(232, 184, 75, 0.12) !important;
+}
+
+textarea {
+  background: transparent !important;
+  color: var(--color-text-primary) !important;
+  font-family: var(--font-sans) !important;
+}
+textarea::placeholder { color: var(--color-text-tertiary) !important; }
+
+/* Send button */
+button[data-testid="send-button"],
+[class*="SubmitButton"],
+[class*="sendButton"] {
+  background: var(--navy-mid) !important;
+  color: var(--gold) !important;
+  border-radius: 8px !important;
+  border: none !important;
+}
+button[data-testid="send-button"]:hover {
+  background: var(--navy-light) !important;
+}
+
+/* Stop button */
+[class*="StopButton"],
+button[data-testid="stop-button"] {
+  color: #e05252 !important;
+  border-color: rgba(224, 82, 82, 0.4) !important;
+}
+
+/* ── Action buttons (Upload, Ingest, etc.) ───────────────────────── */
+[data-testid="action-button"],
+[class*="ActionButton"],
+[class*="action-button"] {
+  background: var(--navy-mid) !important;
+  color: var(--gold) !important;
+  border: 1px solid var(--color-border-secondary) !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  font-size: 0.82rem !important;
+  transition: all 0.15s ease !important;
+}
+[data-testid="action-button"]:hover {
+  background: var(--navy-light) !important;
+  border-color: var(--gold) !important;
+}
+
+/* ── Heading levels ──────────────────────────────────────────────── */
+h1 { color: var(--color-text-primary)   !important; }
+h2 { color: var(--color-text-primary)   !important; }
+h3 { color: var(--gold)                 !important; }
+h4, h5, h6 { color: var(--color-text-secondary) !important; }
+
+/* ── Code / pre ──────────────────────────────────────────────────── */
+code {
+  background: rgba(232, 184, 75, 0.07) !important;
+  border: 1px solid var(--color-border-tertiary) !important;
+  border-radius: 4px !important;
+  color: #c8d8e8 !important;
+  padding: 1px 5px !important;
+  font-size: 0.85em !important;
+}
+pre {
+  background: rgba(232, 184, 75, 0.05) !important;
+  border: 1px solid var(--color-border-tertiary) !important;
+  border-radius: 8px !important;
+  color: #c8d8e8 !important;
+  padding: 12px !important;
+}
+pre code { background: transparent !important; border: none !important; }
+
+/* ── Tables ──────────────────────────────────────────────────────── */
+table { border-collapse: collapse; width: 100%; }
+table th {
+  background: var(--navy-mid) !important;
+  color: var(--gold) !important;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-secondary) !important;
+}
+table td {
+  background: var(--color-background-secondary) !important;
+  color: var(--color-text-primary) !important;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--color-border-tertiary) !important;
+  font-size: 0.85rem;
+}
+
+/* ── Links ───────────────────────────────────────────────────────── */
+a { color: var(--gold) !important; text-decoration: none; }
+a:hover { text-decoration: underline; opacity: 0.85; }
+
+/* ── Horizontal rules ────────────────────────────────────────────── */
+hr {
+  border: none !important;
+  height: 1px !important;
+  background: var(--color-border-tertiary) !important;
+  margin: 14px 0 !important;
+}
+
+/* ── Blockquotes ─────────────────────────────────────────────────── */
+blockquote {
+  border-left: 3px solid var(--color-border-primary) !important;
+  color: var(--color-text-secondary) !important;
+  background: var(--color-background-tertiary) !important;
+  padding: 8px 14px !important;
+  border-radius: 0 6px 6px 0 !important;
+  margin: 8px 0 !important;
+}
+
+/* ── Badge / chip elements ───────────────────────────────────────── */
+[class*="chip"],
+[class*="Chip"],
+[class*="badge"],
+[class*="Badge"],
+[class*="tag"],
+[class*="Tag"] {
+  background: var(--color-background-tertiary) !important;
+  border: 1px solid var(--color-border-secondary) !important;
+  color: var(--color-text-secondary) !important;
+  border-radius: 999px !important;
+  font-size: 0.75rem !important;
+}
+
+/* ── File upload / element display ──────────────────────────────── */
+[class*="dropzone"],
+[class*="Dropzone"],
+[class*="upload"],
+[class*="Upload"] {
+  background: var(--color-background-tertiary) !important;
+  border: 2px dashed var(--color-border-primary) !important;
+  border-radius: 12px !important;
+  color: var(--color-text-secondary) !important;
+}
+
+/* Image / PDF element cards */
+[class*="element"],
+[class*="Element"],
+[data-testid="element"] {
+  background: var(--color-background-secondary) !important;
+  border: 1px solid var(--color-border-tertiary) !important;
+  border-radius: 8px !important;
+  color: var(--color-text-secondary) !important;
+}
+
+/* ── Tooltips / popovers ─────────────────────────────────────────── */
+[class*="tooltip"],
+[class*="Tooltip"],
+[class*="Popover"],
+[class*="Popper"],
+.MuiTooltip-tooltip {
+  background: var(--navy-dark) !important;
+  border: 1px solid var(--color-border-secondary) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* ── Modal / dialog ──────────────────────────────────────────────── */
+[class*="Modal"],
+[class*="Dialog"],
+[class*="modal"],
+.MuiDialog-paper {
+  background: var(--color-background-secondary) !important;
+  border: 1px solid var(--color-border-primary) !important;
+  border-radius: 12px !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(232, 184, 75, 0.25);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(232, 184, 75, 0.45); }
+
+/* ── MUI overrides ───────────────────────────────────────────────── */
+.MuiPaper-root { background: var(--color-background-secondary) !important; }
+.MuiList-root  { background: transparent !important; }
+.MuiListItem-root:hover { background: rgba(232, 184, 75, 0.06) !important; }
+.MuiDivider-root { border-color: var(--color-border-tertiary) !important; }
+.MuiIconButton-root { color: var(--color-text-secondary) !important; }
+.MuiIconButton-root:hover { background: rgba(232, 184, 75, 0.08) !important; }
+.MuiSwitch-track  { background: rgba(255,255,255,0.15) !important; }
+.MuiSwitch-thumb  { background: var(--gold) !important; }
+.Mui-checked + .MuiSwitch-track { background: rgba(232,184,75,0.4) !important; }
+
+/* ── Loading indicator ───────────────────────────────────────────── */
+[class*="loading"],
+[class*="Loading"],
+.MuiCircularProgress-root,
+[class*="spinner"] {
+  color: var(--gold) !important;
+}
+
+/* ── Inline text element display (sources) ───────────────────────── */
+[data-testid="text-element"],
+[class*="TextElement"],
+[class*="inlineElement"] {
+  background: var(--color-background-tertiary) !important;
+  border: 1px solid var(--color-border-tertiary) !important;
+  border-radius: 6px !important;
+  font-size: 0.82rem !important;
+  color: var(--color-text-secondary) !important;
+}
+
+/* ── Mobile responsive ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Sidebar slides off-screen and opens as overlay */
+  aside,
+  [class*="Sidebar"],
+  .MuiDrawer-paper {
+    width: 100vw !important;
+    max-width: 280px !important;
+  }
+
+  /* Full-width chat on mobile */
+  main,
+  [data-testid="main"] {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  /* Message bubbles fit screen */
+  [data-testid="message"],
+  [class*="message-container"],
+  [class*="AssistantMessage"],
+  [class*="UserMessage"] {
+    max-width: calc(100vw - 24px) !important;
+    width: 100% !important;
+  }
+
+  /* Larger input for touch */
+  textarea { font-size: 16px !important; }
+  button   { min-height: 42px !important; }
+
+  /* Compact steps on mobile */
+  [data-testid="step"] {
+    font-size: 0.75rem !important;
+    padding: 5px 8px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Action buttons stack on very small screens */
+  [class*="actions"],
+  [data-testid="actions"] {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+}

@@ -1,24 +1,26 @@
 """
-Ingestion pipeline: PDF → Markdown → Parent-Child chunks → ChromaDB + JSON parent store
+Ingestion pipeline: PDF → Markdown → Parent-Child chunks → ChromaDB + SQLite parent store
 
-Interview concept: WHY two levels of chunks?
+WHY two levels of chunks?
   - Child chunks (500 chars) → used for vector search (precise, focused match)
   - Parent chunks (2000-4000 chars) → passed to LLM (more context around the match)
-  This is called the "Parent-Document Retriever" pattern.
+  This is the "Parent-Document Retriever" pattern.
 
 Flow per PDF:
   PDF
-   └─► pymupdf4llm  →  Markdown text
-         └─► MarkdownHeaderTextSplitter  →  parent sections (by H1/H2/H3)
-               ├─► merge tiny sections, split huge sections  →  cleaned parents
-               ├─► save each parent as JSON  (parent_store/)
-               └─► RecursiveCharacterTextSplitter  →  child chunks
-                     └─► HuggingFace embeddings  →  ChromaDB
+   └► pymupdf4llm → Markdown text
+         └► MarkdownHeaderTextSplitter → parent sections (by H1/H2/H3)
+               ├► merge tiny / split huge → cleaned parents
+               ├► save each parent row to SQLite (parent_store.db)
+               └► RecursiveCharacterTextSplitter → child chunks
+                     └► HuggingFace embeddings → ChromaDB
 """
 
 import os
 import json
 import glob
+import sqlite3
+import threading
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -32,65 +34,86 @@ from langchain_text_splitters import (
 from langchain_core.documents import Document
 
 from .config import (
-    DOCS_DIR, CHROMA_DB_PATH, PARENT_STORE_PATH, COLLECTION_NAME,
-    EMBED_MODEL,
+    DOCS_DIR, CHROMA_DB_PATH, PARENT_STORE_DB_PATH, COLLECTION_NAME,
+    EMBED_MODEL, CHROMA_HOST, CHROMA_PORT,
     CHILD_CHUNK_SIZE, CHILD_CHUNK_OVERLAP,
     MIN_PARENT_SIZE, MAX_PARENT_SIZE,
-    HEADERS_TO_SPLIT_ON,
+    HEADERS_TO_SPLIT_ON, USER_ISOLATION,
 )
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
-# ── Parent Store ───────────────────────────────────────────────────────────────
+# ── Parent Store (SQLite) ──────────────────────────────────────────────────────
 
 class _ParentStore:
     """
-    Stores full parent chunks as JSON files on disk.
-    When the agent retrieves a child chunk, it fetches the full parent by ID.
+    Stores full parent chunks in a SQLite database.
+    Replaces the old per-file JSON approach — faster listing, multi-replica safe.
     """
 
-    def __init__(self, store_path: str = PARENT_STORE_PATH):
-        self._path = Path(store_path)
-        self._path.mkdir(parents=True, exist_ok=True)
+    def __init__(self, db_path: str = PARENT_STORE_DB_PATH):
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._lock = threading.Lock()
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS parents (
+                id          TEXT PRIMARY KEY,
+                content     TEXT NOT NULL,
+                source      TEXT,
+                metadata    TEXT,
+                user_id     TEXT NOT NULL DEFAULT 'default',
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Migrate older tables that predate the user_id column
+        try:
+            self._conn.execute("SELECT user_id FROM parents LIMIT 1")
+        except Exception:
+            self._conn.execute("ALTER TABLE parents ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'")
+        self._conn.commit()
 
-    def save(self, parent_id: str, content: str, metadata: dict) -> None:
-        file_path = self._path / f"{parent_id}.json"
-        file_path.write_text(
-            json.dumps({"content": content, "metadata": metadata}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+    def save(self, parent_id: str, content: str, metadata: dict, user_id: str = "default") -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO parents (id, content, source, metadata, user_id) VALUES (?, ?, ?, ?, ?)",
+                (parent_id, content, metadata.get("source", ""), json.dumps(metadata), user_id),
+            )
+            self._conn.commit()
 
     def load(self, parent_id: str) -> dict:
-        """Returns {} if parent_id not found."""
-        file_path = self._path / f"{parent_id}.json"
-        if not file_path.exists():
+        row = self._conn.execute(
+            "SELECT content, metadata FROM parents WHERE id = ?", (parent_id,)
+        ).fetchone()
+        if not row:
             return {}
-        return json.loads(file_path.read_text(encoding="utf-8"))
+        return {"content": row[0], "metadata": json.loads(row[1])}
 
-    def all_sources(self) -> List[str]:
-        """Return unique source PDF filenames already present in the store."""
-        sources = set()
-        for f in self._path.glob("*.json"):
-            try:
-                data = json.loads(f.read_text(encoding="utf-8"))
-                src = data.get("metadata", {}).get("source", "")
-                if src:
-                    sources.add(src)
-            except Exception:
-                pass
-        return list(sources)
+    def all_sources(self, user_id: str = None) -> List[str]:
+        if user_id and user_id != "default" and USER_ISOLATION:
+            rows = self._conn.execute(
+                "SELECT DISTINCT source FROM parents WHERE source != '' AND user_id = ?",
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT DISTINCT source FROM parents WHERE source != ''"
+            ).fetchall()
+        return [r[0] for r in rows]
 
-    def clear(self) -> None:
-        for f in self._path.glob("*.json"):
-            f.unlink()
+    def clear(self, user_id: str = None) -> None:
+        with self._lock:
+            if user_id and user_id != "default" and USER_ISOLATION:
+                self._conn.execute("DELETE FROM parents WHERE user_id = ?", (user_id,))
+            else:
+                self._conn.execute("DELETE FROM parents")
+            self._conn.commit()
 
 
 # ── Document Chunker ───────────────────────────────────────────────────────────
 
 class _DocumentChunker:
-    """
-    Splits a Markdown document into parent-child chunk pairs.
-    Adapted from: agentic-rag-for-dummies/project/document_chunker.py
-    """
+    """Splits a Markdown document into parent-child chunk pairs."""
 
     def __init__(self):
         self._header_splitter = MarkdownHeaderTextSplitter(
@@ -105,24 +128,12 @@ class _DocumentChunker:
     def chunk(
         self, markdown_text: str, doc_stem: str
     ) -> Tuple[List[Tuple[str, Document]], List[Document]]:
-        """
-        Args:
-            markdown_text: Full Markdown string of one PDF.
-            doc_stem:      PDF filename without extension (used for IDs).
-
-        Returns:
-            parent_pairs:  [(parent_id, Document), ...]
-            child_chunks:  [Document, ...]  each has metadata.parent_id set
-        """
-        # 1. Split by markdown headers into raw section chunks
         raw_sections = self._header_splitter.split_text(markdown_text)
 
-        # 2. Clean up: merge tiny, split huge
         parents = self._merge_small_parents(raw_sections)
         parents = self._split_large_parents(parents)
         parents = self._clean_small_chunks(parents)
 
-        # 3. Assign IDs → create child chunks
         parent_pairs: List[Tuple[str, Document]] = []
         child_chunks: List[Document] = []
 
@@ -139,10 +150,7 @@ class _DocumentChunker:
 
         return parent_pairs, child_chunks
 
-    # ── Private helpers ────────────────────────────────────────────────────
-
     def _merge_small_parents(self, chunks: List[Document]) -> List[Document]:
-        """Concatenate consecutive sections until each parent >= MIN_PARENT_SIZE."""
         if not chunks:
             return []
         merged, current = [], None
@@ -159,7 +167,6 @@ class _DocumentChunker:
         return merged
 
     def _split_large_parents(self, chunks: List[Document]) -> List[Document]:
-        """Break any chunk exceeding MAX_PARENT_SIZE."""
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=MAX_PARENT_SIZE,
             chunk_overlap=CHILD_CHUNK_OVERLAP,
@@ -173,7 +180,6 @@ class _DocumentChunker:
         return result
 
     def _clean_small_chunks(self, chunks: List[Document]) -> List[Document]:
-        """Absorb any remaining small chunks into neighbours."""
         cleaned = []
         for i, chunk in enumerate(chunks):
             if len(chunk.page_content) < MIN_PARENT_SIZE:
@@ -189,7 +195,6 @@ class _DocumentChunker:
 
     @staticmethod
     def _concat(a: Document, b: Document) -> Document:
-        """Merge two Documents by concatenating content and unioning metadata."""
         merged_meta = dict(a.metadata)
         for k, v in b.metadata.items():
             if k not in merged_meta:
@@ -210,119 +215,110 @@ class Ingestion:
 
     Usage:
         ingestor = Ingestion()
-
-        # Ingest all PDFs in docs/ (skips already ingested ones)
         stats = ingestor.ingest_all()
-
-        # Or ingest a single file
         stats = ingestor.ingest_single("docs/rbi_report.pdf")
-
-        # Get vectorstore for query-time search
-        vs = ingestor.get_vectorstore()
+        vs    = ingestor.get_vectorstore()
     """
 
     def __init__(self):
-        print("⏳ Loading embedding model (first run downloads ~90MB)...")
+        logger.info("Loading embedding model (first run downloads ~90MB)...")
         self._embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
-        self._vectorstore = Chroma(
+        self._vectorstore = self._init_vectorstore()
+        self._parent_store = _ParentStore()
+        self._chunker = _DocumentChunker()
+        logger.info("Ingestion ready.")
+
+    def _init_vectorstore(self) -> Chroma:
+        if CHROMA_HOST:
+            import chromadb
+            client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+            logger.info(f"ChromaDB client-server mode: {CHROMA_HOST}:{CHROMA_PORT}")
+            return Chroma(
+                client=client,
+                collection_name=COLLECTION_NAME,
+                embedding_function=self._embeddings,
+            )
+        logger.info(f"ChromaDB local mode: {CHROMA_DB_PATH}")
+        return Chroma(
             collection_name=COLLECTION_NAME,
             embedding_function=self._embeddings,
             persist_directory=CHROMA_DB_PATH,
         )
-        self._parent_store = _ParentStore()
-        self._chunker = _DocumentChunker()
-        print("✓ Ingestion ready.")
 
     # ── Public API ─────────────────────────────────────────────────────────
 
-    def ingest_all(self, docs_dir: str = DOCS_DIR) -> Dict:
-        """
-        Scan docs_dir for PDFs and ingest each one that isn't already stored.
-        Returns a summary dict with 'ingested' and 'skipped' lists.
-        """
+    def ingest_all(self, docs_dir: str = DOCS_DIR, user_id: str = "default") -> Dict:
         pdf_files = glob.glob(os.path.join(docs_dir, "*.pdf"))
         if not pdf_files:
-            print(f"⚠  No PDFs found in {docs_dir}")
+            logger.warning(f"No PDFs found in {docs_dir}")
             return {"ingested": [], "skipped": []}
 
-        already_done = set(self._parent_store.all_sources())
+        already_done = set(self._parent_store.all_sources(user_id=user_id))
         ingested, skipped = [], []
 
         for pdf_path in sorted(pdf_files):
             filename = os.path.basename(pdf_path)
             if filename in already_done:
-                print(f"⏭  Skipping (already ingested): {filename}")
+                logger.info(f"Skipping (already ingested): {filename}")
                 skipped.append(filename)
                 continue
-            stats = self.ingest_single(pdf_path)
+            stats = self.ingest_single(pdf_path, user_id=user_id)
             ingested.append({"file": filename, **stats})
 
-        print(f"\n✅ Done — {len(ingested)} ingested, {len(skipped)} skipped.")
+        logger.info(f"Ingest complete — {len(ingested)} ingested, {len(skipped)} skipped.")
         return {"ingested": ingested, "skipped": skipped}
 
-    def ingest_single(self, pdf_path: str) -> Dict:
-        """
-        Full pipeline for one PDF file.
-        Returns chunk counts for UI display.
-        """
+    def ingest_single(self, pdf_path: str, user_id: str = "default") -> Dict:
         pdf_path = Path(pdf_path)
-        print(f"\n📄 {pdf_path.name}")
+        logger.info(f"Ingesting: {pdf_path.name} (user={user_id})")
 
         try:
-            # Step 1 — PDF → Markdown
-            print("  ├─ PDF → Markdown...")
             markdown = pymupdf4llm.to_markdown(str(pdf_path))
 
-            # Step 2 — Markdown → parent + child chunks
-            print("  ├─ Chunking (parent-child)...")
             parent_pairs, child_chunks = self._chunker.chunk(markdown, pdf_path.stem)
-            print(f"  │   {len(parent_pairs)} parents  |  {len(child_chunks)} children")
+            logger.info(f"{pdf_path.name}: {len(parent_pairs)} parents | {len(child_chunks)} children")
 
-            # Step 3 — Save parents to disk
             for parent_id, parent_doc in parent_pairs:
                 self._parent_store.save(
                     parent_id,
                     parent_doc.page_content,
                     parent_doc.metadata,
+                    user_id=user_id,
                 )
 
-            # Step 4 — Embed children → ChromaDB
-            print("  ├─ Embedding → ChromaDB...")
+            # Tag every child chunk with user_id so ChromaDB can filter per-user
+            for chunk in child_chunks:
+                chunk.metadata["user_id"] = user_id
+
             self._vectorstore.add_documents(child_chunks)
-            print("  └─ ✓")
+            logger.info(f"{pdf_path.name}: embedding done")
 
             return {"parent_chunks": len(parent_pairs), "child_chunks": len(child_chunks)}
 
         except Exception as e:
-            print(f"  └─ ✗ Error: {e}")
+            logger.error(f"Ingestion failed for {pdf_path.name}: {e}", exc_info=True)
             return {"error": str(e)}
 
     def get_vectorstore(self) -> Chroma:
-        """Return the live ChromaDB vectorstore (used by search tool for dense retrieval)."""
         return self._vectorstore
 
     def get_all_texts_and_meta(self) -> List[Tuple[str, dict]]:
-        """
-        Fetch every stored child chunk as (text, metadata) pairs.
-        Called by tools.py at startup to build the BM25 index.
-        """
         result = self._vectorstore.get(include=["documents", "metadatas"])
-        docs = result.get("documents") or []
+        docs  = result.get("documents") or []
         metas = result.get("metadatas") or [{}] * len(docs)
         return list(zip(docs, metas))
 
     def load_parent(self, parent_id: str) -> dict:
-        """Load a full parent chunk by ID. Returns {} if not found."""
         return self._parent_store.load(parent_id)
 
-    def list_ingested_files(self) -> List[str]:
-        """Sorted list of all ingested PDF filenames (for UI sidebar display)."""
-        return sorted(self._parent_store.all_sources())
+    def list_ingested_files(self, user_id: str = None) -> List[str]:
+        return sorted(self._parent_store.all_sources(user_id=user_id))
 
-    def clear_all(self) -> None:
-        """Wipe all stored data — ChromaDB collection + parent JSON files."""
-        print("🗑  Clearing ChromaDB collection...")
-        self._vectorstore.delete_collection()
-        print("🗑  Clearing parent store...")
-        self._parent_store.clear()
-        print("✓ All cleared.")
+    def clear_all(self, user_id: str = None) -> None:
+        logger.info(f"Clearing data for user={user_id or 'all'}...")
+        if user_id and user_id != "default" and USER_ISOLATION:
+            self._parent_store.clear(user_id=user_id)
+        else:
+            self._vectorstore.delete_collection()
+            self._parent_store.clear()
+        logger.info("Clear done.")

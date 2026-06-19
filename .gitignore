@@ -1,11 +1,25 @@
 .env
 __pycache__/
 *.py[cod]
+
+# Data & vector stores
 chroma_db/
 parent_store/
+data/*.db
+data/bm25_cache.pkl
+llm_cache.db
 *.db
+
+# Model cache
+.model_cache/
+
+# Uploaded documents (user data, not source)
+docs/
+
+# Chainlit runtime
+.files/
+
+# Python packaging
+*.egg-info/
 venv/
 .venv/
-*.egg-info/
-docs/
-.files/

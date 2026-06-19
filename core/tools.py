@@ -1,29 +1,29 @@
 """
 RAG search tool used by the agent subgraph.
 
-Interview concept — Hybrid Search pipeline:
-
+Hybrid Search pipeline:
   Query
-   ├─► Dense search (ChromaDB)
-   │     ChromaDB stores child chunks as float vectors (all-MiniLM-L6-v2).
-   │     Cosine similarity finds semantically close chunks.
-   │     Good at: meaning-based matches ("government farm subsidy" ≈ "PM-KISAN")
-   │
-   ├─► Sparse search (BM25)
-   │     Classic keyword-frequency algorithm (Best Match 25).
-   │     Good at: exact term matches ("RBI repo rate", scheme names, years).
-   │
-   ├─► Score fusion (0.6 dense + 0.4 BM25, both normalised to [0,1])
-   │     Neither alone is perfect — hybrid beats both individually.
-   │
-   └─► Reranking (CrossEncoder: ms-marco-MiniLM-L-6-v2)
-         Bi-encoder (ChromaDB) is fast but shallow.
-         Cross-encoder reads query+document together → much better relevance score.
-         We rerank the fused top-K and keep only TOP_K_AFTER_RERANK results.
+   ├► Dense search (ChromaDB cosine similarity)
+   ├► Sparse search (BM25 keyword-frequency)
+   ├► Score fusion  (weighted sum, both normalised to [0,1])
+   └► Cross-encoder reranking (ms-marco-MiniLM-L-6-v2)
+
+Adaptive Retrieval: search_chunks accepts a retrieval_mode parameter
+("factual" | "conceptual" | "comparative" | "auto") that dynamically
+adjusts k, dense/BM25 weights, and top-k after reranking.
+
+BM25 index is persisted to disk as a pickle so cold-start rebuilds are
+skipped when the corpus hasn't changed. A threading.RLock prevents race
+conditions when documents are ingested while searches are in flight.
 """
 
+import pickle
+import threading
 import numpy as np
+from contextvars import ContextVar
+from pathlib import Path
 from typing import List, Tuple
+
 from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 from langchain_core.tools import tool
@@ -31,107 +31,204 @@ from langchain_core.documents import Document
 from langchain_chroma import Chroma
 
 from .config import (
-    DEFAULT_K, DENSE_WEIGHT, BM25_WEIGHT, TOP_K_AFTER_RERANK, RERANKER_MODEL,
+    DEFAULT_K, DENSE_WEIGHT, BM25_WEIGHT, TOP_K_AFTER_RERANK,
+    RERANKER_MODEL, BM25_CACHE_PATH, USER_ISOLATION, RETRIEVAL_PROFILES,
 )
+
+# Carries the active user_id into tool calls without modifying tool signatures.
+# Set this before calling graph.astream() so it is inherited by all async tasks.
+user_id_ctx: ContextVar[str] = ContextVar("user_id", default="default")
 from .ingestion import Ingestion
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+# ── Adaptive retrieval helpers ──────────────────────────────────────────────────
+
+def _classify_query(query: str) -> str:
+    """Keyword-based query type classifier — no LLM call needed."""
+    q     = query.lower()
+    words = set(q.split())
+
+    # Single-word signals — checked at word boundary to avoid substring false-positives
+    compare_words  = {"vs", "compare", "difference", "versus", "contrast", "badla"}
+    factual_words  = {"amount", "rate", "year", "date", "when", "kitna", "kab",
+                      "total", "number", "count", "percentage", "target", "value", "kitne"}
+
+    # Multi-word phrases — substring match is acceptable here
+    compare_phrases = ["compared to", "pehle baad", "changes between"]
+    factual_phrases = ["kya tha", "kya hai", "how much"]
+
+    if words & compare_words or any(p in q for p in compare_phrases):
+        return "comparative"
+    if words & factual_words or any(p in q for p in factual_phrases):
+        return "factual"
+    return "conceptual"
+
+
+def _get_retrieval_params(mode: str, query: str) -> dict:
+    """Return search parameters for the given retrieval mode."""
+    if mode == "auto":
+        mode = _classify_query(query)
+    return RETRIEVAL_PROFILES.get(mode, RETRIEVAL_PROFILES["conceptual"])
 
 
 class ToolFactory:
     """
-    Builds LangChain tools that the RAG agent can call.
-
-    Created once at application startup; shared across all agent invocations.
-
-    Usage:
-        factory = ToolFactory(ingestion)
-        tools   = factory.create_rag_tools()   # pass to agent graph
+    Builds LangChain tools for the RAG agent subgraph.
+    Created once at startup; shared across all agent invocations.
     """
 
     def __init__(self, ingestion: Ingestion):
         self._vectorstore: Chroma = ingestion.get_vectorstore()
         self._ingestion = ingestion
+        self._bm25_lock = threading.RLock()
 
-        print("⏳ Loading CrossEncoder reranker...")
+        logger.info("Loading CrossEncoder reranker...")
         self._reranker = CrossEncoder(RERANKER_MODEL)
-        print("✓ Reranker ready.")
+        logger.info("Reranker ready.")
 
-        # BM25 index is built lazily — rebuilt whenever docs are ingested
         self._bm25: BM25Okapi | None = None
         self._corpus_texts: List[str] = []
         self._corpus_meta: List[dict] = []
-        self._build_bm25_index()
 
-    # ── BM25 index management ───────────────────────────────────────────────
+        if not self._load_bm25_cache():
+            self._build_bm25_index()
+
+    # ── BM25 index management ───────────────────────────────────────────────────
 
     def _build_bm25_index(self) -> None:
-        """
-        Pull all child-chunk texts from ChromaDB and build a BM25 index.
-        Called at startup and after each new ingestion.
-        """
-        pairs = self._ingestion.get_all_texts_and_meta()
-        if not pairs:
-            print("⚠  No documents in ChromaDB yet — BM25 index is empty.")
-            self._bm25 = None
-            return
+        with self._bm25_lock:
+            pairs = self._ingestion.get_all_texts_and_meta()
+            if not pairs:
+                logger.warning("No documents in ChromaDB yet — BM25 index is empty.")
+                self._bm25 = None
+                return
 
-        self._corpus_texts = [text for text, _ in pairs]
-        self._corpus_meta  = [meta for _, meta in pairs]
+            self._corpus_texts = [text for text, _ in pairs]
+            self._corpus_meta  = [meta for _, meta in pairs]
 
-        tokenized = [t.lower().split() for t in self._corpus_texts]
-        self._bm25 = BM25Okapi(tokenized)
-        print(f"✓ BM25 index built: {len(self._corpus_texts)} chunks.")
+            tokenized  = [t.lower().split() for t in self._corpus_texts]
+            self._bm25 = BM25Okapi(tokenized)
+            logger.info(f"BM25 index built: {len(self._corpus_texts)} chunks.")
+            self._save_bm25_cache()
 
     def rebuild_bm25(self) -> None:
-        """Call this after ingesting new documents to keep BM25 in sync."""
+        """Call after ingesting new documents to keep BM25 in sync."""
         self._build_bm25_index()
 
-    # ── Hybrid search core ──────────────────────────────────────────────────
+    def _save_bm25_cache(self) -> None:
+        try:
+            with open(BM25_CACHE_PATH, "wb") as f:
+                pickle.dump({
+                    "bm25":         self._bm25,
+                    "corpus_texts": self._corpus_texts,
+                    "corpus_meta":  self._corpus_meta,
+                }, f)
+            logger.info(f"BM25 cache saved: {BM25_CACHE_PATH}")
+        except Exception as e:
+            logger.warning(f"Could not save BM25 cache: {e}")
 
-    def _hybrid_search(self, query: str, k: int = DEFAULT_K) -> List[Tuple[Document, float]]:
-        """
-        Fuse dense + sparse results then rerank.
+    def _load_bm25_cache(self) -> bool:
+        if not Path(BM25_CACHE_PATH).exists():
+            return False
+        try:
+            with open(BM25_CACHE_PATH, "rb") as f:
+                data = pickle.load(f)
+            self._bm25         = data["bm25"]
+            self._corpus_texts = data["corpus_texts"]
+            self._corpus_meta  = data["corpus_meta"]
+            logger.info(f"BM25 cache loaded: {len(self._corpus_texts)} chunks.")
+            return True
+        except Exception as e:
+            logger.warning(f"BM25 cache load failed (will rebuild): {e}")
+            return False
 
-        Returns:
-            List of (Document, rerank_score) sorted by rerank score desc,
-            capped at TOP_K_AFTER_RERANK.
-        """
-        # ── 1. Dense retrieval ────────────────────────────────────────────
-        # Returns (doc, relevance_score) in [0,1]; higher = better
-        dense_raw: List[Tuple[Document, float]] = (
-            self._vectorstore.similarity_search_with_relevance_scores(query, k=k * 2)
-        )
+    # ── Hybrid search core ──────────────────────────────────────────────────────
 
-        # ── 2. BM25 retrieval ─────────────────────────────────────────────
-        bm25_scores = np.zeros(len(self._corpus_texts))
-        if self._bm25 is not None:
-            bm25_scores = np.array(
-                self._bm25.get_scores(query.lower().split()), dtype=float
+    def _hybrid_search(
+        self,
+        query: str,
+        k: int = DEFAULT_K,
+        source_filter: str = "",
+        dense_weight: float = DENSE_WEIGHT,
+        bm25_weight: float = BM25_WEIGHT,
+        top_k_after_rerank: int = TOP_K_AFTER_RERANK,
+    ) -> List[Tuple[Document, float]]:
+        user_id       = user_id_ctx.get()
+        apply_user    = USER_ISOLATION and user_id not in ("default", "all")
+        apply_source  = bool(source_filter)
+
+        with self._bm25_lock:
+            corpus_texts = list(self._corpus_texts)
+            corpus_meta  = list(self._corpus_meta)
+            bm25         = self._bm25
+
+        # 1. Dense retrieval — build combined filter when needed
+        if apply_user and apply_source:
+            chroma_filter = {"$and": [{"user_id": user_id}, {"source": source_filter}]}
+        elif apply_user:
+            chroma_filter = {"user_id": user_id}
+        elif apply_source:
+            chroma_filter = {"source": source_filter}
+        else:
+            chroma_filter = None
+
+        try:
+            dense_raw: List[Tuple[Document, float]] = (
+                self._vectorstore.similarity_search_with_relevance_scores(
+                    query, k=k * 2, filter=chroma_filter
+                )
             )
+        except Exception as exc:
+            logger.warning(f"ChromaDB filtered query failed ({exc}), retrying unfiltered")
+            dense_raw = self._vectorstore.similarity_search_with_relevance_scores(query, k=k * 2)
+            # Post-filter in Python as fallback
+            if apply_user or apply_source:
+                dense_raw = [
+                    (doc, score) for doc, score in dense_raw
+                    if (
+                        (not apply_user   or doc.metadata.get("user_id", "default") == user_id) and
+                        (not apply_source or doc.metadata.get("source", "") == source_filter)
+                    )
+                ]
 
-        # ── 3. Build candidate pool ───────────────────────────────────────
-        # Key: page_content  →  {doc, dense_score, bm25_score}
+        # 2. BM25 retrieval — mask out documents not matching the active filters
+        bm25_scores = np.zeros(len(corpus_texts))
+        if bm25 is not None:
+            raw_scores = np.array(bm25.get_scores(query.lower().split()), dtype=float)
+            if (apply_user or apply_source) and corpus_meta:
+                mask = np.array([
+                    1.0 if (
+                        (not apply_user   or m.get("user_id", "default") == user_id) and
+                        (not apply_source or m.get("source", "") == source_filter)
+                    ) else 0.0
+                    for m in corpus_meta
+                ])
+                bm25_scores = raw_scores * mask
+            else:
+                bm25_scores = raw_scores
+
+        # 3. Build candidate pool
         candidates: dict = {}
 
         for doc, score in dense_raw:
             text = doc.page_content
-            idx = self._text_to_corpus_idx(text)
+            idx  = _corpus_idx(text, corpus_texts)
             candidates[text] = {
                 "doc":   doc,
                 "dense": float(score),
                 "bm25":  float(bm25_scores[idx]) if idx >= 0 else 0.0,
             }
 
-        # Add BM25-top-K docs that dense missed
-        if self._bm25 is not None:
+        if bm25 is not None:
             top_bm25_idxs = np.argsort(bm25_scores)[::-1][: k * 2]
             for idx in top_bm25_idxs:
-                text = self._corpus_texts[idx]
+                text = corpus_texts[idx]
                 if text not in candidates:
                     candidates[text] = {
-                        "doc":   Document(
-                            page_content=text,
-                            metadata=self._corpus_meta[idx],
-                        ),
+                        "doc":   Document(page_content=text, metadata=corpus_meta[idx]),
                         "dense": 0.0,
                         "bm25":  float(bm25_scores[idx]),
                     }
@@ -139,22 +236,20 @@ class ToolFactory:
         if not candidates:
             return []
 
-        # ── 4. Normalise both scores to [0, 1] and fuse ───────────────────
+        # 4. Normalise and fuse with adaptive weights
         dense_vals = np.array([v["dense"] for v in candidates.values()])
         bm25_vals  = np.array([v["bm25"]  for v in candidates.values()])
-
         dense_norm = _minmax(dense_vals)
         bm25_norm  = _minmax(bm25_vals)
 
-        for i, (text, data) in enumerate(candidates.items()):
-            data["hybrid"] = DENSE_WEIGHT * dense_norm[i] + BM25_WEIGHT * bm25_norm[i]
+        for i, data in enumerate(candidates.values()):
+            data["hybrid"] = dense_weight * dense_norm[i] + bm25_weight * bm25_norm[i]
 
-        # Sort by hybrid score, keep top K for reranking
         top_candidates = sorted(
             candidates.values(), key=lambda x: x["hybrid"], reverse=True
         )[:k]
 
-        # ── 5. Cross-encoder reranking ────────────────────────────────────
+        # 5. Cross-encoder reranking
         pairs = [(query, cand["doc"].page_content) for cand in top_candidates]
         rerank_scores: np.ndarray = self._reranker.predict(pairs)
 
@@ -163,26 +258,15 @@ class ToolFactory:
             key=lambda x: x[1],
             reverse=True,
         )
-        return [(item["doc"], score) for item, score in reranked[:TOP_K_AFTER_RERANK]]
+        return [(item["doc"], score) for item, score in reranked[:top_k_after_rerank]]
 
-    def _text_to_corpus_idx(self, text: str) -> int:
-        """Return position of text in BM25 corpus, or -1 if not found."""
-        try:
-            return self._corpus_texts.index(text)
-        except ValueError:
-            return -1
-
-    # ── Tool creation ───────────────────────────────────────────────────────
+    # ── Tool creation ───────────────────────────────────────────────────────────
 
     def create_rag_tools(self) -> list:
-        """
-        Return the list of LangChain tools for the RAG agent subgraph.
-        Currently: [search_chunks]
-        """
-        factory = self  # captured in closure
+        factory = self
 
         @tool
-        def search_chunks(query: str) -> str:
+        def search_chunks(query: str, source_filter: str = "", retrieval_mode: str = "auto") -> str:
             """
             Search uploaded documents using hybrid retrieval (dense + BM25 + reranking).
             Use this to find information in any PDF that has been uploaded and ingested —
@@ -192,6 +276,12 @@ class ToolFactory:
             Args:
                 query: The search query in English. Be specific — include key terms, names,
                        and numbers from the user's question.
+                source_filter: Optional PDF filename to restrict search to a single document.
+                               Example: "budget_2024.pdf". Leave empty to search all documents.
+                retrieval_mode: Search profile — "factual" for specific facts/numbers (BM25-heavy),
+                                "conceptual" for explanations/frameworks (dense-heavy),
+                                "comparative" for multi-doc comparisons (wide net),
+                                "auto" (default) detects mode from the query automatically.
 
             Returns:
                 Relevant document excerpts with source filenames.
@@ -199,7 +289,8 @@ class ToolFactory:
             if not factory._corpus_texts:
                 return "NO_DOCUMENTS_INGESTED: Please upload and ingest PDF documents first."
 
-            results = factory._hybrid_search(query)
+            params = _get_retrieval_params(retrieval_mode, query)
+            results = factory._hybrid_search(query, source_filter=source_filter, **params)
 
             if not results:
                 return "NO_RELEVANT_CHUNKS: No relevant content found. Try rephrasing the query."
@@ -209,10 +300,16 @@ class ToolFactory:
         return [search_chunks]
 
 
-# ── Formatting helpers ─────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _corpus_idx(text: str, corpus: List[str]) -> int:
+    try:
+        return corpus.index(text)
+    except ValueError:
+        return -1
+
 
 def _minmax(arr: np.ndarray) -> np.ndarray:
-    """Normalise array to [0, 1]. Handles all-zero or all-same arrays."""
     lo, hi = arr.min(), arr.max()
     if hi - lo < 1e-9:
         return np.zeros_like(arr)
@@ -220,11 +317,6 @@ def _minmax(arr: np.ndarray) -> np.ndarray:
 
 
 def _format_search_results(results: List[Tuple[Document, float]], ingestion=None) -> str:
-    """
-    Format retrieved (doc, score) pairs for the LLM.
-    Loads the full parent chunk when available — much richer context than the 500-char child.
-    Deduplicates by parent_id so the same section isn't repeated.
-    """
     seen_parents: set = set()
     parts = []
     chunk_num = 1
@@ -235,7 +327,7 @@ def _format_search_results(results: List[Tuple[Document, float]], ingestion=None
 
         if parent_id and ingestion:
             if parent_id in seen_parents:
-                continue  # already included this parent section
+                continue
             parent_data = ingestion.load_parent(parent_id)
             content = parent_data.get("content") or doc.page_content
             seen_parents.add(parent_id)

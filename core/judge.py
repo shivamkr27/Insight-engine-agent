@@ -1,25 +1,25 @@
 """
 LLM-as-Judge: hallucination detection for the India Policy Agent.
 
-Interview concept:
-  LLM-as-Judge is a self-evaluation pattern where a separate LLM call scores
-  the quality of the main LLM's output. Here it detects hallucination by
-  checking whether the final answer is grounded in the retrieved context.
-
-  Score scale:
-    1 — Fully grounded: every claim traceable to the retrieved context
-    2 — Mostly grounded: minor extrapolation, no false claims
-    3 — Partial: some claims not verifiable from context
-    4 — Mostly hallucinated: significant unsupported statements
-    5 — Fabricated: ignores the retrieved context entirely
+Score scale:
+  1 — Fully grounded: every claim traceable to the retrieved context
+  2 — Mostly grounded: minor extrapolation, no false claims
+  3 — Partial: some claims not verifiable from context
+  4 — Mostly hallucinated: significant unsupported statements
+  5 — Fabricated: ignores the retrieved context entirely
 
   is_safe = True  when score <= HALLUCINATION_SAFE_THRESHOLD (≤ 2)
 """
+
+import hashlib
 
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from .config import HALLUCINATION_SAFE_THRESHOLD, HALLUCINATION_WARN_THRESHOLD
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class JudgeResult(BaseModel):
@@ -55,20 +55,17 @@ is_safe must be true if and only if score <= 2."""
 class HallucinationJudge:
     """
     Evaluates the final answer against the retrieved context.
-
-    Usage:
-        judge = HallucinationJudge()
-        result = judge.score(question, context, answer, llm)
-        # result: {"score": int, "reason": str, "is_safe": bool, "badge": str}
+    Results are cached by content hash to avoid redundant LLM calls.
     """
 
-    def score(
-        self,
-        question: str,
-        context: str,
-        answer: str,
-        llm,
-    ) -> dict:
+    def __init__(self):
+        self._cache: dict[str, dict] = {}
+
+    def _cache_key(self, question: str, context: str, answer: str) -> str:
+        payload = f"{question}|{context[:500]}|{answer[:500]}"
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def score(self, question: str, context: str, answer: str, llm) -> dict:
         """
         Args:
             question: The user's original question.
@@ -79,7 +76,11 @@ class HallucinationJudge:
         Returns:
             dict with keys: score, reason, is_safe, badge
         """
-        # Truncate to avoid blowing the context window
+        key = self._cache_key(question, context, answer)
+        if key in self._cache:
+            logger.info("HallucinationJudge: cache hit")
+            return self._cache[key]
+
         context_trimmed = context[:3000] if len(context) > 3000 else context
         answer_trimmed  = answer[:1500]  if len(answer)  > 1500  else answer
 
@@ -95,15 +96,16 @@ class HallucinationJudge:
                 SystemMessage(content=_JUDGE_SYSTEM_PROMPT),
                 HumanMessage(content=user_content),
             ])
-            return {
+            output = {
                 "score":   result.score,
                 "reason":  result.reason,
                 "is_safe": result.is_safe,
                 "badge":   self._badge(result.score),
             }
+            self._cache[key] = output
+            return output
         except Exception as e:
-            # If the judge itself fails, default to safe — don't block the user
-            print(f"⚠  Judge failed: {e}")
+            logger.warning(f"HallucinationJudge failed: {e}")
             return {
                 "score":   1,
                 "reason":  "Judge unavailable.",

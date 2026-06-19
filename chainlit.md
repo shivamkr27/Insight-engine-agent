@@ -1,3 +1,5 @@
 # 🏛️ India Policy Intelligence Agent
 
-Loading multi-agent RAG system...
+*Multi-agent RAG · LangGraph · Hybrid Search · Hallucination Judge*
+
+Loading system...

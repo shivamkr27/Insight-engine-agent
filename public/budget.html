@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budget Dashboard — India Policy Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:       #0D1B2A;
+      --surface:  #0A1525;
+      --surface2: #162032;
+      --navy-mid: #1a2e4a;
+      --gold:     #E8B84B;
+      --gold-dim: rgba(232,184,75,0.12);
+      --text:     #E2EAF4;
+      --text2:    #9AB0CB;
+      --text3:    #5C7A99;
+      --border:   rgba(232,184,75,0.12);
+      --border2:  rgba(232,184,75,0.22);
+      --green:    #52c77a;
+      --yellow:   #f0c040;
+      --red:      #e05252;
+      --font:     'Inter', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border2);
+      flex-wrap: wrap; gap: 12px;
+    }
+    .header-brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon {
+      width: 38px; height: 38px; background: var(--navy-mid);
+      border-radius: 8px; border: 1px solid var(--border2);
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .brand-title   { font-size: 15px; font-weight: 600; }
+    .brand-sub     { font-size: 11px; color: var(--text3); margin-top: 2px; }
+    .header-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .year-tabs { display: flex; gap: 4px; }
+    .year-tab {
+      padding: 6px 14px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 12px; font-weight: 500;
+      color: var(--text3); background: transparent; cursor: pointer;
+      font-family: var(--font); transition: all 0.15s;
+    }
+    .year-tab.active { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+    .year-tab:hover:not(.active) { background: rgba(255,255,255,0.04); color: var(--text); }
+
+    .back-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 12px; color: var(--text3);
+      background: transparent; cursor: pointer; font-family: var(--font);
+      text-decoration: none; transition: all 0.15s;
+    }
+    .back-btn:hover { border-color: var(--border2); color: var(--text); }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-card {
+      padding: 16px 20px; background: var(--surface);
+      border-right: 1px solid var(--border);
+    }
+    .stat-card:last-child { border-right: none; }
+    .stat-num  { font-size: 22px; font-weight: 600; color: var(--gold); }
+    .stat-lbl  { font-size: 11px; color: var(--text3); margin-top: 3px; }
+    .stat-sub  { font-size: 10px; color: var(--text3); margin-top: 2px; opacity: 0.7; }
+
+    /* ── Main grid ── */
+    .main { padding: 20px 24px; }
+    .charts-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 18px; margin-bottom: 18px;
+    }
+    .chart-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px;
+    }
+    .chart-card.full { grid-column: 1 / -1; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .card-title  { font-size: 11px; font-weight: 600; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase; }
+    .card-badge  {
+      font-size: 10px; padding: 2px 8px; border-radius: 999px;
+      background: var(--gold-dim); color: var(--gold);
+      border: 1px solid rgba(232,184,75,0.25);
+    }
+    .chart-wrap { position: relative; height: 260px; }
+
+    /* ── Utilisation table ── */
+    .util-table { width: 100%; border-collapse: collapse; }
+    .util-table thead tr { border-bottom: 1px solid var(--border2); }
+    .util-table th {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+      text-transform: uppercase; color: var(--text3); padding: 8px 12px; text-align: left;
+    }
+    .util-table td { padding: 10px 12px; font-size: 12.5px; border-bottom: 1px solid rgba(232,184,75,0.05); vertical-align: middle; }
+    .util-table tr:hover td { background: rgba(232,184,75,0.03); }
+    .util-table tr:last-child td { border-bottom: none; }
+    .ministry-pill {
+      display: inline-block; padding: 2px 9px;
+      border-radius: 4px; font-size: 11px; font-weight: 500;
+      background: var(--surface2); color: var(--text2);
+    }
+    .util-bar-wrap { display: flex; align-items: center; gap: 10px; }
+    .util-bar-bg   { flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .util-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+    .util-pct      { font-size: 12px; font-weight: 600; min-width: 42px; text-align: right; }
+    .num-right     { text-align: right; color: var(--text2); font-variant-numeric: tabular-nums; }
+
+    /* ── Misc ── */
+    .loading { display: flex; align-items: center; justify-content: center; height: 180px; color: var(--text3); font-size: 13px; gap: 8px; }
+    .dot-spin { width: 8px; height: 8px; border: 2px solid var(--border2); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error-msg { color: var(--red); font-size: 13px; padding: 24px; text-align: center; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(232,184,75,0.2); border-radius: 3px; }
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-card.full { grid-column: 1; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .stat-card:nth-child(2) { border-right: none; }
+      .stat-card:nth-child(3) { border-top: 1px solid var(--border); }
+      header { flex-direction: column; align-items: flex-start; }
+      .chart-wrap { height: 220px; }
+      .util-table th:nth-child(3),
+      .util-table td:nth-child(3) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <div class="brand-icon">🏛️</div>
+    <div>
+      <div class="brand-title">Budget Analytics Dashboard</div>
+      <div class="brand-sub">India Policy Intelligence Agent · Union Budget Data</div>
+    </div>
+  </div>
+  <div class="header-controls">
+    <div class="year-tabs">
+      <button class="year-tab" onclick="setYear(2023)" id="tab-2023">FY 2023</button>
+      <button class="year-tab active" onclick="setYear(2024)" id="tab-2024">FY 2024</button>
+      <button class="year-tab" onclick="setYear(2025)" id="tab-2025">FY 2025</button>
+      <button class="year-tab" onclick="setYear('all')" id="tab-all">All Years</button>
+    </div>
+    <a href="javascript:history.back()" class="back-btn">← Back to Chat</a>
+  </div>
+</header>
+
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-num" id="s-alloc">—</div>
+    <div class="stat-lbl">Total Allocated</div>
+    <div class="stat-sub">₹ Crore</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" id="s-schemes">—</div>
+    <div class="stat-lbl">Schemes Tracked</div>
+    <div class="stat-sub">in selected year</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" id="s-util">—</div>
+    <div class="stat-lbl">Avg Utilisation</div>
+    <div class="stat-sub">spent / allocated</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" id="s-min">—</div>
+    <div class="stat-lbl">Ministries</div>
+    <div class="stat-sub">with budget data</div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">Top Ministries by Allocation</div>
+        <div class="card-badge" id="badge-ministry">FY 2024</div>
+      </div>
+      <div class="chart-wrap"><canvas id="ministryChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title" id="yoy-title">Allocated vs Spent</div>
+        <div class="card-badge" id="badge-yoy">FY 2024</div>
+      </div>
+      <div class="chart-wrap"><canvas id="yoyChart"></canvas></div>
+    </div>
+    <div class="chart-card full">
+      <div class="card-header">
+        <div class="card-title">Scheme-wise Utilisation Rate</div>
+        <div class="card-badge" id="badge-util">FY 2024</div>
+      </div>
+      <div id="utilTable"><div class="loading"><div class="dot-spin"></div>Loading data…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+Chart.defaults.color = '#9AB0CB';
+
+let _allData   = [];
+let _activeYear = 2024;
+let _chartMin  = null;
+let _chartYoY  = null;
+
+const C = {
+  gold:   '#E8B84B', goldDim: 'rgba(232,184,75,0.25)',
+  green:  '#52c77a', yellow: '#f0c040', red: '#e05252',
+  text2:  '#9AB0CB', text3:  '#5C7A99',
+  gridLine: 'rgba(232,184,75,0.07)',
+};
+
+const MINISTRY_COLORS = {
+  'Agriculture':       '#4caf50',
+  'Education':         '#2196F3',
+  'Health':            '#e91e63',
+  'Rural Development': '#ff9800',
+  'Urban Development': '#9c27b0',
+  'Infrastructure':    '#E8B84B',
+  'Defence':           '#607d8b',
+  'Finance':           '#00bcd4',
+};
+function mColor(m) { return MINISTRY_COLORS[m] || '#6b84a3'; }
+
+/* ── Data fetching ── */
+async function fetchData() {
+  try {
+    const resp = await fetch('/api/budget-data');
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    const json = await resp.json();
+    if (json.error) throw new Error(json.error);
+    _allData = json.data;
+    renderAll();
+  } catch (e) {
+    const msg = `<div class="error-msg">⚠️ Could not load budget data.<br><small>${e.message}</small><br><br>Make sure the agent server is running and budget data has been loaded.</div>`;
+    document.getElementById('utilTable').innerHTML = msg;
+    ['s-alloc','s-schemes','s-util','s-min'].forEach(id => document.getElementById(id).textContent = '—');
+  }
+}
+
+/* ── Year filter ── */
+function setYear(year) {
+  _activeYear = year;
+  document.querySelectorAll('.year-tab').forEach(t => t.classList.remove('active'));
+  const tabId = year === 'all' ? 'tab-all' : `tab-${year}`;
+  document.getElementById(tabId).classList.add('active');
+  const lbl = year === 'all' ? 'All Years' : `FY ${year}`;
+  ['badge-ministry','badge-yoy','badge-util'].forEach(id => document.getElementById(id).textContent = lbl);
+  renderAll();
+}
+
+function filtered() {
+  if (_activeYear === 'all') return _allData;
+  return _allData.filter(d => d.year === _activeYear);
+}
+
+function groupBy(arr, key) {
+  return arr.reduce((acc, d) => { (acc[d[key]] = acc[d[key]] || []).push(d); return acc; }, {});
+}
+
+/* ── Stats ── */
+function renderStats() {
+  const data = filtered();
+  const totalAlloc = data.reduce((s, d) => s + d.allocated, 0);
+  const spentRows  = data.filter(d => d.spent > 0);
+  const avgUtil    = spentRows.length
+    ? spentRows.reduce((s, d) => s + (d.spent / d.allocated * 100), 0) / spentRows.length
+    : null;
+  const ministries = new Set(data.map(d => d.ministry)).size;
+
+  document.getElementById('s-alloc').textContent =
+    totalAlloc >= 100000 ? `₹${(totalAlloc/100000).toFixed(2)}L Cr`
+    : `₹${totalAlloc.toLocaleString('en-IN')}`;
+  document.getElementById('s-schemes').textContent = data.length;
+  document.getElementById('s-util').textContent    = avgUtil ? `${avgUtil.toFixed(1)}%` : 'N/A';
+  document.getElementById('s-min').textContent     = ministries;
+}
+
+/* ── Ministry allocation chart ── */
+function renderMinistryChart() {
+  const byMin = groupBy(filtered(), 'ministry');
+  const rows = Object.entries(byMin)
+    .map(([m, items]) => ({
+      ministry:  m,
+      allocated: items.reduce((s, d) => s + d.allocated, 0),
+      spent:     items.reduce((s, d) => s + d.spent, 0),
+    }))
+    .sort((a, b) => b.allocated - a.allocated)
+    .slice(0, 8);
+
+  const ctx = document.getElementById('ministryChart').getContext('2d');
+  if (_chartMin) _chartMin.destroy();
+
+  _chartMin = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.ministry),
+      datasets: [
+        {
+          label: 'Allocated (₹ 000 Cr)',
+          data:  rows.map(r => +(r.allocated / 1000).toFixed(1)),
+          backgroundColor: rows.map(r => mColor(r.ministry) + 'aa'),
+          borderColor:     rows.map(r => mColor(r.ministry)),
+          borderWidth: 1, borderRadius: 4,
+        },
+        {
+          label: 'Spent (₹ 000 Cr)',
+          data:  rows.map(r => r.spent > 0 ? +(r.spent / 1000).toFixed(1) : null),
+          backgroundColor: rows.map(r => mColor(r.ministry) + '44'),
+          borderColor:     rows.map(r => mColor(r.ministry) + '99'),
+          borderWidth: 1, borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: C.text2, font: { size: 11 }, boxWidth: 12 } } },
+      scales: {
+        x: { ticks: { color: C.text2, font: { size: 10 } }, grid: { color: C.gridLine } },
+        y: {
+          ticks: { color: C.text2, font: { size: 10 }, callback: v => `₹${v}K Cr` },
+          grid:  { color: C.gridLine },
+        },
+      },
+    },
+  });
+}
+
+/* ── Year-over-year / Alloc vs Spent chart ── */
+function renderYoyChart() {
+  const ctx = document.getElementById('yoyChart').getContext('2d');
+  if (_chartYoY) _chartYoY.destroy();
+
+  if (_activeYear === 'all') {
+    /* Line chart: YoY trend per major ministry */
+    document.getElementById('yoy-title').textContent = 'Year-over-Year Trend';
+    const ministryYearMap = {};
+    _allData.forEach(d => {
+      if (!ministryYearMap[d.ministry]) ministryYearMap[d.ministry] = {};
+      ministryYearMap[d.ministry][d.year] = (ministryYearMap[d.ministry][d.year] || 0) + d.allocated;
+    });
+    const top6 = Object.entries(ministryYearMap)
+      .map(([m, ydata]) => ({ ministry: m, a2024: ydata[2024] || 0 }))
+      .sort((a, b) => b.a2024 - a.a2024).slice(0, 6).map(x => x.ministry);
+    const years = [2023, 2024, 2025];
+    const palette = [C.gold, C.green, '#2196F3', '#e91e63', '#ff9800', '#9c27b0'];
+
+    _chartYoY = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: years.map(y => `FY ${y}`),
+        datasets: top6.map((m, i) => ({
+          label: m,
+          data: years.map(y => {
+            const v = ministryYearMap[m]?.[y] || 0;
+            return v > 0 ? +(v / 1000).toFixed(1) : null;
+          }),
+          borderColor: palette[i], backgroundColor: palette[i] + '18',
+          borderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
+          fill: false, tension: 0.3, spanGaps: false,
+        })),
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: C.text2, font: { size: 10 }, boxWidth: 12 } } },
+        scales: {
+          x: { ticks: { color: C.text2, font: { size: 11 } }, grid: { color: C.gridLine } },
+          y: { ticks: { color: C.text2, font: { size: 10 }, callback: v => `₹${v}K` }, grid: { color: C.gridLine } },
+        },
+      },
+    });
+  } else {
+    /* Bar chart: allocated vs spent for selected year by ministry */
+    document.getElementById('yoy-title').textContent = 'Allocated vs Spent';
+    const byMin = groupBy(filtered(), 'ministry');
+    const rows = Object.entries(byMin)
+      .map(([m, items]) => ({
+        ministry:  m,
+        allocated: items.reduce((s, d) => s + d.allocated, 0),
+        spent:     items.reduce((s, d) => s + d.spent, 0),
+      }))
+      .filter(r => r.spent > 0)
+      .sort((a, b) => b.allocated - a.allocated)
+      .slice(0, 7);
+
+    _chartYoY = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: rows.map(r => r.ministry),
+        datasets: [
+          {
+            label: 'Allocated',
+            data: rows.map(r => +(r.allocated / 1000).toFixed(1)),
+            backgroundColor: C.goldDim, borderColor: C.gold, borderWidth: 1, borderRadius: 4,
+          },
+          {
+            label: 'Spent',
+            data: rows.map(r => +(r.spent / 1000).toFixed(1)),
+            backgroundColor: 'rgba(82,199,122,0.25)', borderColor: C.green, borderWidth: 1, borderRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: C.text2, font: { size: 11 }, boxWidth: 12 } } },
+        scales: {
+          x: { ticks: { color: C.text2, font: { size: 10 } }, grid: { color: C.gridLine } },
+          y: { ticks: { color: C.text2, font: { size: 10 }, callback: v => `₹${v}K` }, grid: { color: C.gridLine } },
+        },
+      },
+    });
+  }
+}
+
+/* ── Utilisation table ── */
+function renderUtilTable() {
+  const data = filtered().filter(d => d.spent > 0)
+    .sort((a, b) => (b.spent / b.allocated) - (a.spent / a.allocated));
+
+  if (!data.length) {
+    document.getElementById('utilTable').innerHTML =
+      '<div class="loading">No utilisation data available for the selected period.</div>';
+    return;
+  }
+
+  let html = `<table class="util-table">
+    <thead><tr>
+      <th>Ministry</th>
+      <th>Scheme</th>
+      <th class="num-right">Allocated (₹ Cr)</th>
+      <th class="num-right">Spent (₹ Cr)</th>
+      <th style="min-width:160px">Utilisation</th>
+    </tr></thead><tbody>`;
+
+  data.forEach(d => {
+    const pct   = d.spent / d.allocated * 100;
+    const color = pct >= 90 ? C.green : pct >= 75 ? C.yellow : C.red;
+    const cap   = Math.min(pct, 100);
+    html += `<tr>
+      <td><span class="ministry-pill">${d.ministry}</span></td>
+      <td style="color:var(--text)">${d.scheme}</td>
+      <td class="num-right">${d.allocated.toLocaleString('en-IN')}</td>
+      <td class="num-right">${d.spent.toLocaleString('en-IN')}</td>
+      <td>
+        <div class="util-bar-wrap">
+          <div class="util-bar-bg">
+            <div class="util-bar-fill" style="width:${cap}%;background:${color}"></div>
+          </div>
+          <span class="util-pct" style="color:${color}">${pct.toFixed(1)}%</span>
+        </div>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('utilTable').innerHTML = html;
+}
+
+/* ── Main render ── */
+function renderAll() {
+  renderStats();
+  renderMinistryChart();
+  renderYoyChart();
+  renderUtilTable();
+}
+
+fetchData();
+</script>
+</body>
+</html>

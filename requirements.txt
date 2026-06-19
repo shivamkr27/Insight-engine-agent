@@ -6,12 +6,13 @@ langchain-huggingface>=0.1.0
 langchain-chroma>=0.2.0
 langchain-text-splitters>=0.3.0
 langgraph>=0.3.0
+langgraph-checkpoint-sqlite>=1.0.0
 
 # Vector DB
 chromadb>=0.6.0
 
 # Embeddings + cross-encoder reranker
-# torch is installed separately in Dockerfile (CPU-only build, ~700MB vs 2GB)
+# torch is installed separately in Dockerfile (CPU-only build)
 sentence-transformers>=3.0.0
 
 # Sparse search (BM25)
@@ -30,6 +31,9 @@ sqlalchemy>=2.0.0
 
 # Token counting
 tiktoken>=0.7.0
+
+# Retry with exponential backoff
+tenacity>=8.2.0
 
 # Environment
 python-dotenv>=1.0.0

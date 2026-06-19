@@ -3,22 +3,28 @@ enable_telemetry = false
 session_timeout  = 3600
 
 [features]
-unsafe_allow_html = true
+unsafe_allow_html = false
 multi_modal       = true
 
 [UI]
-name        = "India Policy Intelligence Agent"
-description = "Multi-agent RAG for Indian government policies, RBI circulars & Union Budget"
-default_theme = "light"
+name          = "India Policy Intelligence Agent"
+description   = "Multi-agent RAG for Indian government policies, RBI circulars & Union Budget"
+default_theme = "dark"
 layout        = "wide"
 hide_cta      = true
 
 [UI.theme]
-default = "light"
+default = "dark"
+
+[UI.theme.dark]
+background = "#0D1B2A"
+paper      = "#0A1525"
+primary    = "#E8B84B"
 
 [UI.theme.light]
-background = "#FAF3E0"
-paper      = "#FFF8ED"
+background = "#0D1B2A"
+paper      = "#0A1525"
+primary    = "#E8B84B"
 
 [meta]
 generated_by = "chainlit"
