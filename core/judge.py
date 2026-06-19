@@ -1,12 +1,12 @@
 """
-LLM-as-Judge: hallucination detection for the India Policy Agent.
+LLM-as-Judge: hallucination detection for InsightEngine AI.
 
 Score scale:
-  1 — Fully grounded: every claim traceable to the retrieved context
-  2 — Mostly grounded: minor extrapolation, no false claims
-  3 — Partial: some claims not verifiable from context
-  4 — Mostly hallucinated: significant unsupported statements
-  5 — Fabricated: ignores the retrieved context entirely
+  1 — Factually consistent with context (paraphrasing is fine — still 1/5)
+  2 — Mostly consistent; minor additions from general knowledge, no false claims
+  3 — Partially supported; some unverified claims, no direct contradiction
+  4 — Claims contradict context, or significant unsupported assertions
+  5 — Completely unsupported or directly contradicts the context
 
   is_safe = True  when score <= HALLUCINATION_SAFE_THRESHOLD (≤ 2)
 """
@@ -34,19 +34,21 @@ class JudgeResult(BaseModel):
     )
 
 
-_JUDGE_SYSTEM_PROMPT = """You are a hallucination detector for an Indian government policy assistant.
+_JUDGE_SYSTEM_PROMPT = """You are a hallucination detector for a document intelligence assistant.
 
-Your task: evaluate whether the ANSWER is grounded in the CONTEXT provided.
+Your task: evaluate whether the ANSWER is factually consistent with the CONTEXT provided.
 
-Scoring (1-5):
-  1 — Every claim in the answer is directly supported by the context
-  2 — Answer is mostly grounded; minor inference acceptable, no false claims
-  3 — Answer mixes supported facts with unsupported assertions
-  4 — Major claims in the answer are not in the context or contradict it
-  5 — Answer is largely fabricated, ignoring the provided context
+Scoring guide:
+  1 — Answer is factually consistent with context, even if phrased differently or paraphrased
+  2 — Answer is mostly consistent; minor additions from general knowledge, no false claims
+  3 — Answer partially supported; some claims unverified but no direct contradiction
+  4 — Answer has claims that contradict the context, or significant unsupported assertions
+  5 — Answer is completely unsupported or directly contradicts the context
 
-Domain note: Indian policy data (scheme names, ministry allocations, RBI rates)
-is factual — even a single fabricated figure is serious (score >= 4).
+CRITICAL: Paraphrasing is NOT hallucination.
+  - Different wording = still 1/5 if the facts match
+  - Synonyms, restructured sentences, simplified explanations = still 1/5 if factually accurate
+  - Only penalise when facts are invented, contradicted, or fabricated from training data
 
 Return JSON with exactly three fields: score (int), reason (str), is_safe (bool).
 is_safe must be true if and only if score <= 2."""
