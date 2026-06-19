@@ -47,11 +47,7 @@ from langgraph.graph import START, END, StateGraph, MessagesState
 from langgraph.types import Command, Send
 from langgraph.prebuilt import ToolNode
 
-try:
-    from langgraph.checkpoint.sqlite import SqliteSaver
-    _SQLITE_CHECKPOINTER = True
-except ImportError:
-    from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.memory import InMemorySaver
     _SQLITE_CHECKPOINTER = False
 
 from .config import (
@@ -830,20 +826,17 @@ def _after_agents_router(state: State) -> Command:
 
 # ── Checkpointer factory ───────────────────────────────────────────────────────
 
-def create_checkpointer(db_path: str = SQLITE_CHECKPOINT_PATH):
-    """
-    Create the graph checkpointer.
-    Called once at startup; the same instance is shared with the study graph
-    so both use the same checkpoints.db (different thread_id namespaces).
-    """
-    if _SQLITE_CHECKPOINTER:
-        conn = _sqlite3.connect(db_path, check_same_thread=False)
-        cp   = SqliteSaver(conn)
-        logger.info(f"Graph checkpointer: SqliteSaver ({db_path})")
+async def create_checkpointer(db_path: str = SQLITE_CHECKPOINT_PATH):
+    """Async checkpointer — must be called from an async context (on_chat_app_start)."""
+    try:
+        import aiosqlite
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        conn = await aiosqlite.connect(db_path)
+        cp = AsyncSqliteSaver(conn)
+        logger.info(f"Graph checkpointer: AsyncSqliteSaver ({db_path})")
         return cp
-    else:
-        from langgraph.checkpoint.memory import InMemorySaver
-        logger.warning("langgraph-checkpoint-sqlite not installed — using InMemorySaver")
+    except Exception as e:
+        logger.warning(f"AsyncSqliteSaver unavailable ({e}) — using InMemorySaver")
         return InMemorySaver()
 
 

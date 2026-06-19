@@ -62,7 +62,7 @@ from core.ingestion import Ingestion
 from core.tools import ToolFactory, user_id_ctx
 from core.text2sql import Text2SQLEngine
 from core.judge import HallucinationJudge
-from core.graph import build_graph, create_checkpointer
+from core.graph import build_graph, create_checkpointer  # create_checkpointer is now async
 from core.study_graph import build_study_graph
 from core.memory_store import UserMemoryStore
 from core.rate_limiter import RateLimiter
@@ -108,15 +108,26 @@ _ingestion    = Ingestion()
 _sql_engine   = Text2SQLEngine()
 _judge        = HallucinationJudge()
 _factory      = ToolFactory(_ingestion)
-_checkpointer = create_checkpointer()
-_graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
-_study_graph  = build_study_graph(_llm, _factory, _checkpointer)
+_checkpointer = None  # initialized in on_chat_app_start (async)
+_graph        = None
+_study_graph  = None
 _memory_store = UserMemoryStore(_ingestion._embeddings)
 _limiter      = RateLimiter(max_requests=RATE_LIMIT_REQUESTS, window_seconds=RATE_LIMIT_WINDOW)
 _history      = ConversationStore(db_path=HISTORY_DB_PATH)
 _study_store  = StudyStore(db_path=STUDY_DB_PATH)
 
-logger.info("Agent ready. Launching UI...")
+logger.info("Singletons ready. Waiting for app start to init async graph...")
+
+
+# ── App startup — async graph + checkpointer init ──────────────────────────────
+
+@cl.on_chat_app_start
+async def on_app_start():
+    global _checkpointer, _graph, _study_graph
+    _checkpointer = await create_checkpointer()
+    _graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
+    _study_graph  = build_study_graph(_llm, _factory, _checkpointer)
+    logger.info("Agent ready.")
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
@@ -147,7 +158,7 @@ def oauth_callback(
 @cl.on_chat_start
 async def on_chat_start():
     thread_id = cl.context.session.id
-    user      = cl.context.current_user
+    user      = cl.context.session.user
     user_id   = user.identifier if user else "default"
 
     cl.user_session.set("thread_id",              thread_id)

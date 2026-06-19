@@ -12,6 +12,7 @@ description   = "Multi-agent RAG for Indian government policies, RBI circulars &
 default_theme = "dark"
 layout        = "wide"
 hide_cta      = true
+custom_css    = "/public/custom.css"
 
 [UI.theme]
 default = "dark"
