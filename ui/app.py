@@ -178,6 +178,8 @@ async def on_chat_start():
     await cl.Message(
         content=_welcome_text(user_id),
         actions=[
+            cl.Action(name="upload_pdf",        payload={}, label="📎 Upload File"),
+            cl.Action(name="ingest_all",        payload={}, label="📂 Ingest All Docs"),
             cl.Action(name="toggle_hindi",      payload={}, label="🇮🇳 Hindi"),
             cl.Action(name="study_mode",        payload={}, label="📚 Study"),
             cl.Action(name="compare_mode",      payload={}, label="🔀 Compare"),
