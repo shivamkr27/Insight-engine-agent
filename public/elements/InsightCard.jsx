@@ -1,4 +1,5 @@
-export default function InsightCard({ answer, sources, judgebadge, judgereason }) {
+export default function InsightCard({ answer, sources: sourcesProp, judgebadge, judgereason }) {
+  const sources = typeof sourcesProp === "string" ? JSON.parse(sourcesProp) : (sourcesProp || []);
   const C = {
     accent:       "#F0BA72",
     accentDim:    "rgba(240,186,114,0.10)",

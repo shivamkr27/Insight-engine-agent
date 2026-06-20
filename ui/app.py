@@ -249,9 +249,9 @@ async def on_message(message: cl.Message):
     if study_active and study_thread_id:
         study_config = {"configurable": {"thread_id": study_thread_id}}
         try:
-            study_state = _study_graph.get_state(study_config)
+            study_state = await _study_graph.aget_state(study_config)
             if study_state.next and "evaluate_answer" in study_state.next:
-                _study_graph.update_state(
+                await _study_graph.aupdate_state(
                     study_config,
                     {"messages": [HumanMessage(content=message.content)]},
                 )
@@ -299,7 +299,7 @@ async def on_message(message: cl.Message):
     )
 
     if cl.user_session.get("awaiting_clarification"):
-        _graph.update_state(config, {"messages": [HumanMessage(content=message.content)]})
+        await _graph.aupdate_state(config, {"messages": [HumanMessage(content=message.content)]})
         cl.user_session.set("awaiting_clarification", False)
         await _run_graph(
             resume=True, config=config, user_id=user_id,
@@ -451,7 +451,7 @@ async def on_resume_study(action: cl.Action):
 
     study_config = {"configurable": {"thread_id": past_thread_id}}
     try:
-        state = _study_graph.get_state(study_config)
+        state = await _study_graph.aget_state(study_config)
     except Exception as e:
         logger.error(f"resume_study get_state failed: {e}", exc_info=True)
         await cl.Message(content="Could not load study session state. It may have expired.").send()
@@ -595,7 +595,7 @@ async def on_resume_conversation(action: cl.Action):
 
     config = {"configurable": {"thread_id": past_thread_id}}
     try:
-        state  = _graph.get_state(config)
+        state  = await _graph.aget_state(config)
         msgs   = state.values.get("messages", [])
         last_q, last_a = "", ""
         for m in reversed(msgs):
@@ -764,7 +764,7 @@ async def _run_graph(
                 async with cl.Step(name=f"🔗 Step {step_num}/{total}: {step_q[:50]}", type="tool") as step:
                     step.output = preview
 
-        final_state = _graph.get_state(config)
+        final_state = await _graph.aget_state(config)
 
         if final_state.next and "request_clarification" in final_state.next:
             cl.user_session.set("awaiting_clarification", True)
@@ -793,12 +793,13 @@ async def _run_graph(
         try:
             judge_badge  = final_state.values.get("judge_badge",  "")
             judge_reason = final_state.values.get("judge_reason", "")
+            import json as _json
             card = cl.CustomElement(
                 name="InsightCard",
                 display="inline",
                 props={
                     "answer":      response_msg.content,
-                    "sources":     sorted(_sources),
+                    "sources":     _json.dumps(sorted(_sources)),
                     "judgebadge":  judge_badge,
                     "judgereason": judge_reason,
                 },
@@ -859,7 +860,7 @@ async def _run_study_graph(
                     if isinstance(m, AIMessage) and m.content:
                         await cl.Message(content=m.content).send()
 
-        final_state = _study_graph.get_state(config)
+        final_state = await _study_graph.aget_state(config)
 
         if not final_state.next:
             cl.user_session.set("study_active",    False)
@@ -952,7 +953,11 @@ async def _send_doc_list(user_id: str = "default") -> None:
     else:
         content = "📂 No documents yet. Drop a PDF, Word doc, or text file here to get started."
     try:
-        card = cl.CustomElement(name="DocLibraryCard", display="inline", props={"docs": docs})
+        import json as _json
+        card = cl.CustomElement(
+            name="DocLibraryCard", display="inline",
+            props={"docs": _json.dumps(docs)},
+        )
         await cl.Message(content=content, author="📚 Library", elements=[card]).send()
     except Exception:
         await cl.Message(content=content, author="📚 Library").send()

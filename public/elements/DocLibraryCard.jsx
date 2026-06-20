@@ -1,4 +1,5 @@
-export default function DocLibraryCard({ docs }) {
+export default function DocLibraryCard({ docs: docsProp }) {
+  const docs = typeof docsProp === "string" ? JSON.parse(docsProp) : (docsProp || []);
   const C = {
     accent:       "#F0BA72",
     accentDim:    "rgba(240,186,114,0.10)",
