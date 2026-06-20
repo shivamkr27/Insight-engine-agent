@@ -40,7 +40,24 @@ def get_llm():
     }
 
     factory, _ = providers.get(primary, providers["groq"])
-    llm = factory()
+    try:
+        llm = factory()
+    except Exception as e:
+        logger.error(f"Primary LLM provider '{primary}' failed to initialize: {e}")
+        for name, (fac, key_name) in providers.items():
+            if name == primary:
+                continue
+            try:
+                logger.warning(f"Falling back to provider: {name}")
+                llm = fac()
+                primary = name
+                break
+            except Exception:
+                continue
+        else:
+            raise RuntimeError(
+                f"All LLM providers failed to initialize. Primary error: {e}"
+            ) from e
 
     fallbacks = []
     for name, (fac, key_name) in providers.items():
@@ -50,8 +67,8 @@ def get_llm():
             try:
                 fallbacks.append(fac())
                 logger.info(f"Registered fallback: {name}")
-            except Exception as e:
-                logger.warning(f"Could not init fallback provider {name}: {e}")
+            except Exception as exc:
+                logger.warning(f"Could not init fallback provider {name}: {exc}")
 
     if fallbacks:
         return llm.with_fallbacks(fallbacks)

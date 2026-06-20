@@ -27,6 +27,11 @@ COPY . .
 
 RUN mkdir -p docs data chroma_db parent_store .model_cache
 
+# Run as non-root for security
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+RUN chown -R appuser:appgroup /app
+USER appuser
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

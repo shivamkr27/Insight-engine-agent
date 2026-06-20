@@ -63,7 +63,7 @@ from core.ingestion import Ingestion
 from core.tools import ToolFactory, user_id_ctx
 from core.text2sql import Text2SQLEngine
 from core.judge import HallucinationJudge
-from core.graph import build_graph
+from core.graph import build_graph, create_checkpointer
 from core.study_graph import build_study_graph
 from core.memory_store import UserMemoryStore
 from core.rate_limiter import RateLimiter
@@ -121,7 +121,21 @@ from langgraph.checkpoint.memory import InMemorySaver
 _checkpointer = InMemorySaver()
 _graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
 _study_graph  = build_study_graph(_llm, _factory, _checkpointer)
-logger.info("Agent ready.")
+logger.info("Agent ready (InMemorySaver — upgrading to persistent checkpointer on startup).")
+
+
+@cl.on_app_startup
+async def _on_app_startup():
+    """Upgrade checkpointer from InMemorySaver to AsyncSqliteSaver.
+
+    Runs once before any user connects.  Must be async so aiosqlite can open
+    the connection in the event loop — this is why we can't do it at module level.
+    """
+    global _checkpointer, _graph, _study_graph
+    _checkpointer = await create_checkpointer()
+    _graph        = build_graph(_llm, _factory, _sql_engine, _judge, _checkpointer)
+    _study_graph  = build_study_graph(_llm, _factory, _checkpointer)
+    logger.info("Persistent checkpointer active — conversation state survives container restarts.")
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
@@ -172,6 +186,7 @@ async def on_chat_start():
     ).send()
 
     await _send_history(user_id, thread_id)
+    await _send_study_history(user_id)
 
 
 @cl.on_message
@@ -239,6 +254,15 @@ async def on_message(message: cl.Message):
                     {"messages": [HumanMessage(content=message.content)]},
                 )
                 await _run_study_graph(study_config, user_id=user_id)
+                return
+            else:
+                await cl.Message(
+                    content=(
+                        "📚 **Study session isn't waiting for an answer right now.** "
+                        "The session may be between questions or in an unexpected state.\n\n"
+                        "Use the **Exit Study** button to end the session cleanly, then start a new one."
+                    )
+                ).send()
                 return
         except Exception as e:
             logger.error(f"Study mode routing failed: {e}", exc_info=True)
@@ -410,6 +434,47 @@ async def on_exit_study(action: cl.Action):
     cl.user_session.set("study_active",    False)
     cl.user_session.set("study_thread_id", "")
     await cl.Message(content="📚 Study mode ended. Back to normal chat.").send()
+
+
+@cl.action_callback("resume_study")
+async def on_resume_study(action: cl.Action):
+    """Resume an in-progress study session from its checkpoint."""
+    past_thread_id = action.payload.get("study_thread_id", "")
+    doc_name       = action.payload.get("doc_name", "unknown")
+    user_id        = cl.user_session.get("user_id", "default")
+
+    if not past_thread_id:
+        await cl.Message(content="Could not resume — session ID missing.").send()
+        return
+
+    study_config = {"configurable": {"thread_id": past_thread_id}}
+    try:
+        state = _study_graph.get_state(study_config)
+    except Exception as e:
+        logger.error(f"resume_study get_state failed: {e}", exc_info=True)
+        await cl.Message(content="Could not load study session state. It may have expired.").send()
+        return
+
+    cl.user_session.set("study_active",    True)
+    cl.user_session.set("study_thread_id", past_thread_id)
+
+    current_q = state.values.get("current_question", "")
+    score     = state.values.get("score",  0.0)
+    total     = state.values.get("total",  0)
+
+    resume_text = (
+        f"📚 **Study session resumed** — *{doc_name}*\n\n"
+        f"Score so far: **{score:.0f} / {total}**\n\n"
+    )
+    if current_q:
+        resume_text += f"**Current question:**\n\n{current_q}"
+    else:
+        resume_text += "Type your answer to continue, or use **Exit Study** to end the session."
+
+    await cl.Message(
+        content=resume_text,
+        actions=[cl.Action(name="exit_study", payload={}, label="❌ Exit Study Mode")],
+    ).send()
 
 
 # ── Feature 3: Compare Mode ────────────────────────────────────────────────────
@@ -722,13 +787,25 @@ async def _run_graph(
         cl.user_session.set("last_answer",  response_msg.content)
         cl.user_session.set("last_sources", sorted(_sources))
 
-        await response_msg.update()
+        # Attach InsightCard inline — judge badge + source chips + Copy/Export buttons
+        try:
+            judge_badge  = final_state.values.get("judge_badge",  "")
+            judge_reason = final_state.values.get("judge_reason", "")
+            card = cl.CustomElement(
+                name="InsightCard",
+                display="inline",
+                props={
+                    "answer":      response_msg.content,
+                    "sources":     sorted(_sources),
+                    "judgebadge":  judge_badge,
+                    "judgereason": judge_reason,
+                },
+            )
+            response_msg.elements = [card]
+        except Exception as _card_err:
+            logger.warning(f"InsightCard element skipped: {_card_err}")
 
-        # Sources as collapsible step
-        if _sources:
-            src_step = cl.Step(name=f"📄 Sources ({len(_sources)})", type="tool")
-            src_step.output = "\n".join(f"• {s}" for s in sorted(_sources))
-            await src_step.send()
+        await response_msg.update()
 
         # User feedback buttons
         if response_msg.content:
@@ -869,11 +946,14 @@ async def _handle_file_elements(elements, user_id: str = "default") -> None:
 async def _send_doc_list(user_id: str = "default") -> None:
     docs = _ingestion.list_ingested_files(user_id=user_id)
     if docs:
-        lines   = "\n".join(f"📄 `{d}`" for d in docs)
-        content = f"**Library ({len(docs)} documents):**\n\n{lines}"
+        content = f"**Library ({len(docs)} document{'s' if len(docs) != 1 else ''})** — ask anything about them below."
     else:
         content = "📂 No documents yet. Drop a PDF, Word doc, or text file here to get started."
-    await cl.Message(content=content, author="📚 Library").send()
+    try:
+        card = cl.CustomElement(name="DocLibraryCard", display="inline", props={"docs": docs})
+        await cl.Message(content=content, author="📚 Library", elements=[card]).send()
+    except Exception:
+        await cl.Message(content=content, author="📚 Library").send()
 
 
 async def _send_history(user_id: str, current_thread_id: str) -> None:
@@ -894,6 +974,43 @@ async def _send_history(user_id: str, current_thread_id: str) -> None:
         content="**Recent conversations:**",
         actions=actions,
         author="History",
+    ).send()
+
+
+async def _send_study_history(user_id: str) -> None:
+    """Show past study sessions — active ones get a Resume button."""
+    sessions = await asyncio.to_thread(_study_store.list_user, user_id, 5)
+    if not sessions:
+        return
+
+    active   = [s for s in sessions if s["status"] == "active"]
+    finished = [s for s in sessions if s["status"] == "completed"]
+
+    lines = []
+    actions = []
+
+    for s in active:
+        pct = f"{s['score']:.0f}/{s['total']}" if s["total"] else "0/0"
+        lines.append(f"📖 **{s['doc_name']}** — {pct} pts *(in progress)*")
+        actions.append(
+            cl.Action(
+                name="resume_study",
+                payload={"study_thread_id": s["study_thread_id"], "doc_name": s["doc_name"]},
+                label=f"▶ Resume: {s['doc_name'][:30]}",
+            )
+        )
+
+    for s in finished[:3]:
+        pct = f"{s['score']:.0f}/{s['total']}" if s["total"] else "—"
+        lines.append(f"✅ **{s['doc_name']}** — {pct} pts")
+
+    if not lines:
+        return
+
+    await cl.Message(
+        content="**Past study sessions:**\n\n" + "\n\n".join(lines),
+        actions=actions or None,
+        author="Study History",
     ).send()
 
 

@@ -373,6 +373,27 @@ hr {
 ::-webkit-scrollbar-thumb { background: rgba(240,186,114,0.2); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(240,186,114,0.4); }
 
+/* ── CUSTOM ELEMENTS (InsightCard / DocLibraryCard) ── */
+
+/* Wrapper Chainlit renders around inline CustomElements */
+[class*="custom-element"],
+[data-testid="custom-element"] {
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* InsightCard / DocLibraryCard button hover */
+[class*="custom-element"] button:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+/* DocLibraryCard row hover */
+[class*="custom-element"] > div > div:hover {
+  background: var(--bg-hover) !important;
+}
+
 /* ── MOBILE ── */
 @media (max-width: 768px) {
   textarea { font-size: 16px !important; }

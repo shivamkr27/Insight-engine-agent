@@ -23,9 +23,9 @@ paper      = "#111827"
 primary    = "#F0BA72"
 
 [UI.theme.light]
-background = "#0D0F1A"
-paper      = "#111827"
-primary    = "#F0BA72"
+background = "#F0F4F8"
+paper      = "#FFFFFF"
+primary    = "#1E3A5F"
 
 [meta]
 generated_by = "chainlit"

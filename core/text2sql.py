@@ -115,6 +115,11 @@ Rules:
         ])
 
         sql = self._extract_sql(response.content.strip())
+
+        if not sql.strip().upper().startswith("SELECT"):
+            logger.warning(f"Rejected non-SELECT SQL from LLM: {sql[:80]}")
+            return "Error: only SELECT queries are permitted on budget data."
+
         logger.info(f"Generated SQL: {sql[:120]}")
 
         with self._lock:

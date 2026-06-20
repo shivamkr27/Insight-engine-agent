@@ -69,6 +69,7 @@ from .judge import HallucinationJudge
 from .tools import ToolFactory, _format_search_results
 from .retrieval_grader import RetrievalGrader
 from .text2sql import Text2SQLEngine
+from .utils import invoke_with_retry
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -490,11 +491,16 @@ def reasoning_synthesizer(state: State, llm) -> dict:
 
 # ── Agent subgraph nodes ───────────────────────────────────────────────────────
 
-def orchestrator(state: AgentState, llm_with_tools) -> dict:
+def orchestrator(state: AgentState, llm_no_web, llm_with_web) -> dict:
     lang               = state.get("answer_language", "english")
     doc_filter         = state.get("doc_filter", "")
     user_memories      = state.get("user_memories", [])
     web_search_enabled = state.get("web_search_enabled", False)
+
+    # Hard enforcement: bind only the tools the toggle actually allows.
+    # llm_no_web has search_chunks only; llm_with_web adds web_search.
+    # Selecting here prevents the LLM from calling web_search even if it ignores the prompt.
+    active_llm = llm_with_web if web_search_enabled else llm_no_web
 
     memory_context = "\n".join(f"- {m}" for m in user_memories) if user_memories else ""
     prompt_text    = get_orchestrator_prompt(
@@ -523,8 +529,8 @@ def orchestrator(state: AgentState, llm_with_tools) -> dict:
             force_msg = HumanMessage(
                 content="You MUST call search_chunks as your first action to find relevant documents."
             )
-            response = llm_with_tools.invoke(
-                [sys_msg] + compressed_msgs + [human_msg, force_msg]
+            response = invoke_with_retry(
+                active_llm, [sys_msg] + compressed_msgs + [human_msg, force_msg]
             )
             return {
                 "messages":        [human_msg, response],
@@ -532,7 +538,7 @@ def orchestrator(state: AgentState, llm_with_tools) -> dict:
                 "iteration_count": 1,
             }
 
-        response = llm_with_tools.invoke([sys_msg] + compressed_msgs + state["messages"])
+        response = invoke_with_retry(active_llm, [sys_msg] + compressed_msgs + state["messages"])
         return {
             "messages":        [response],
             "tool_call_count": len(response.tool_calls or []),
@@ -861,14 +867,17 @@ def build_graph(
     checkpointer=None,
 ):
     if checkpointer is None:
-        checkpointer = create_checkpointer()
+        checkpointer = InMemorySaver()
 
-    # Always include web_search in tool registry so it's available when toggled on.
-    # The orchestrator prompt controls whether the LLM actually calls it.
+    # Build two tool-bound LLMs: base (search_chunks only) and full (+ web_search).
+    # The orchestrator selects at runtime based on web_search_enabled graph state —
+    # hard enforcement so the toggle actually blocks the tool, not just the prompt.
     from .web_search import web_search as _web_search_tool
-    rag_tools      = tool_factory.create_rag_tools() + [_web_search_tool]
-    llm_with_tools = llm.bind_tools(rag_tools)
-    tool_node      = ToolNode(rag_tools)
+    rag_tools_base = tool_factory.create_rag_tools()
+    rag_tools_full = rag_tools_base + [_web_search_tool]
+    llm_no_web     = llm.bind_tools(rag_tools_base)
+    llm_with_web   = llm.bind_tools(rag_tools_full)
+    tool_node      = ToolNode(rag_tools_full)
 
     # CRAG grader — uses a separate fast model
     from .llm import get_grader_llm
@@ -878,7 +887,7 @@ def build_graph(
     # ── Agent subgraph ─────────────────────────────────────────────────────
     agent_builder = StateGraph(AgentState)
 
-    agent_builder.add_node("orchestrator",            partial(orchestrator, llm_with_tools=llm_with_tools))
+    agent_builder.add_node("orchestrator",            partial(orchestrator, llm_no_web=llm_no_web, llm_with_web=llm_with_web))
     agent_builder.add_node("tools",                   tool_node)
     agent_builder.add_node("retrieval_grader",        partial(retrieval_grader_node, grader=grader))
     agent_builder.add_node("query_rewriter_loop",     partial(query_rewriter_loop, llm=llm))
