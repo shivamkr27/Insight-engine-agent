@@ -2,7 +2,7 @@
 
 A production-grade multi-agent RAG (Retrieval-Augmented Generation) system that answers questions from uploaded documents using hybrid search, parallel agent orchestration, and real-time streaming.
 
-**Live:** https://indpolicy.duckdns.org
+**Live:** http://80.225.212.121:8000
 
 ---
 
@@ -208,7 +208,7 @@ Runs on Oracle Cloud Infrastructure `e2.1.micro` (1GB RAM, 1 OCPU):
 - **Memory limit:** `800m` container, `2500m` with swap
 - **Thread control:** `OMP_NUM_THREADS=2`, `MKL_NUM_THREADS=2`
 - **Idle memory:** ~354MB / 800MB (44%)
-- **Caddy** handles HTTPS + DuckDNS at `https://indpolicy.duckdns.org`
+- Deployed on OCI e2.1.micro, accessible at `http://80.225.212.121:8000`
 
 ---
 
