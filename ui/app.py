@@ -789,11 +789,14 @@ async def _run_graph(
         cl.user_session.set("last_answer",  response_msg.content)
         cl.user_session.set("last_sources", sorted(_sources))
 
-        # Attach InsightCard inline — judge badge + source chips + Copy/Export buttons
+        # Step 1: flush text to user immediately — no elements, always safe
+        await response_msg.update()
+
+        # Step 2: InsightCard is a best-effort decoration; NEVER blocks the text above
         try:
+            import json as _json
             judge_badge  = final_state.values.get("judge_badge",  "")
             judge_reason = final_state.values.get("judge_reason", "")
-            import json as _json
             card = cl.CustomElement(
                 name="InsightCard",
                 display="inline",
@@ -805,10 +808,10 @@ async def _run_graph(
                 },
             )
             response_msg.elements = [card]
+            await response_msg.update()
         except Exception as _card_err:
-            logger.warning(f"InsightCard element skipped: {_card_err}")
-
-        await response_msg.update()
+            logger.warning(f"InsightCard skipped: {_card_err}")
+            response_msg.elements = []
 
         # User feedback buttons
         if response_msg.content:
@@ -836,7 +839,8 @@ async def _run_graph(
             "GraphInterruptException": "Agent paused for clarification.",
         }
         friendly = err_map.get(type(e).__name__, "Something went wrong. Please try again.")
-        response_msg.content = f"⚠️ {friendly}"
+        response_msg.content  = f"⚠️ {friendly}"
+        response_msg.elements = []   # clear any broken element before retrying update
         await response_msg.update()
     finally:
         user_id_ctx.reset(_token)
