@@ -24,7 +24,7 @@ chainlit>=2.0.0
 
 # PDF → Markdown
 pymupdf>=1.24.0
-pymupdf4llm>=0.0.17
+pymupdf4llm>=1.27.2.3
 
 # Structured data / SQL
 pandas>=2.0.0
